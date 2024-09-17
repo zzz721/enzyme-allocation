@@ -1,0 +1,267 @@
+% Random group: the pathways with random k (rate constant) parameters
+% Control group: the pathways with k (rate constant) parameters which are calculated by our theory 
+%%
+% Define the reaction pathway
+nrxn = 10; % Number of reactions
+nsamples = 400000; % Number of samples
+KSample=5.^normrnd(0.1,0.5,nrxn,nsamples); % K as a random variable
+kSample_random=5.^normrnd(0,0.5,nrxn,nsamples);% Random k
+kSample_control = zeros(size(kSample_random));
+kSample_control(:) = 0.1;
+Sin=5.^normrnd(1,0.5,1,1);% Random input substrate
+Sout=5.^normrnd(1,0.5,1,1);% Random output substrate
+%%
+% Calculate maximum flow and relevant parameters of the random group
+fcc_group_random = zeros(nrxn,nsamples);
+
+S_group_random = zeros(nrxn+1,nsamples);
+Cond_group_random = zeros(nsamples,1);
+var_group_random = zeros(nsamples,1);
+gini_group_random = zeros(nsamples,1);
+flux_group_random = zeros(nsamples,1);
+unabs_flux_group_random = zeros(nsamples,1);
+extreme_group_random = zeros(nsamples,1);
+wrong_group_random = zeros(nsamples,1);
+x_group = zeros(nrxn,nsamples);
+wrong = zeros(nsamples,1);
+
+min_val_of_fcc = ones(nsamples,1);
+
+for j=1:nsamples
+    
+    kSample_random_sum = sum(kSample_random(:,j));
+    for i=1:nrxn
+        kSample_random(i,j) = kSample_random(i,j)/kSample_random_sum;
+    end
+    
+    K = KSample(:,j);
+    k = kSample_random(:,j);
+    
+    start_x = [1,1,1,1,1,1,1,1,1,1];% Initial guess values  
+    % Solve for reaction rates using fsolve 
+    x_real = fsolve(@(start_x)fun_zero(start_x,K,k,Sin,Sout),start_x);
+    x_group(:,j) = x_real;% Store the reaction rates
+    S = zeros(11,1);
+    S(1) = Sin;
+    S(11) = Sout;
+    
+    % Calculate intermediate concentrations 
+    for i =2:10
+        S(i) = S(i-1)*x_real(i-1);
+    end
+    
+    % Check if the last reaction rate is reasonable
+    if abs(x_real(10)-S(11)/S(10)) > 0.0001
+        wrong(j) = 1;
+    end
+    
+    flux_10steps=k(1)*(1-S(2)/(S(1)*K(1)));
+    
+    % Calculate flux control coefficients
+    fcc = zeros(nrxn,1);
+    for i=1:nrxn
+        fcc(i)=K(i)*S(i)/S(i+1)-1;
+    end
+    fcc=fcc/sum(fcc);
+    
+    fcc_group_random(:,j) = fcc;
+    S_group_random(:,j) = S;
+    var_group_random(j) = var(fcc);
+    gini_group_random(j) = GiniIndex(fcc);
+    flux_group_random(j) = flux_10steps;
+    min_val_of_fcc(j) = min(fcc);
+    
+    % Check for extreme values and negative concentrations
+    if max(S)/min(S) > 5000
+        extreme_group_random(j) = 1;
+    end
+    
+    if min(S) < 0
+        wrong_group_random(j) = 1;
+    end
+    
+    
+end
+
+% Identify samples to delete based on extreme values or errors
+extreme_random = extreme_group_random >0;
+extreme_cond_group_random = Cond_group_random(extreme_random);
+
+wrong_random = wrong >0;
+
+var_group_random(extreme_random) = -1;
+var_group_random(wrong_random) = -1;
+delete1 = var_group_random == -1;
+delete2 = min_val_of_fcc <= 0;
+delete_random = delete1 + delete2 > 0;
+
+fcc_group_random(:,delete_random) = [];
+%S_group_random(:,delete_random) = [];
+Cond_group_random(delete_random) = [];
+var_group_random(delete_random) = [];
+flux_group_random(delete_random) = [];
+gini_group_random(delete_random) = [];
+min_val_of_fcc(delete_random) = [];
+
+sum_wrong= sum(wrong_random);
+sum_extreme = sum(extreme_group_random);
+
+max_var = max(var_group_random);
+max_flux = max(flux_group_random);
+clear delete_* sum_* 
+%% Calculate parameters for the control group
+
+fcc_group_control = zeros(nrxn,nsamples);
+
+S_group_control = zeros(nrxn+1,nsamples);
+Cond_group_control = zeros(nsamples,1);
+var_group_control = zeros(nsamples,1);
+gini_group_control = zeros(nsamples,1);
+flux_group_control = zeros(nsamples,1);
+unabs_flux_group_control = zeros(nsamples,1);
+extreme_group_control = zeros(nsamples,1);
+wrong_group_control = zeros(nsamples,1);
+x_group = zeros(nrxn,nsamples);
+wrong = zeros(nsamples,1);
+
+min_val_of_fcc = ones(nsamples,1);
+
+% Loop through each control sample to perform calculations
+% Similar to the random group
+for j=1:nsamples
+    
+    kSample_random_sum = sum(kSample_random(:,j));
+
+    
+    K = KSample(:,j);
+    k = kSample_control(:,j);
+    
+    start_x = [1,1,1,1,1,1,1,1,1,1];
+    x_real = fsolve(@(start_x)fun_zero(start_x,K,k,Sin,Sout),start_x);
+    x_group(:,j) = x_real;
+    S = zeros(11,1);
+    S(1) = Sin;
+    S(11) = Sout;
+    for i =2:10
+        S(i) = S(i-1)*x_real(i-1);
+    end
+    
+    if abs(x_real(10)-S(11)/S(10)) > 0.0001
+        wrong(j) = 1;
+    end
+    
+    flux_10steps=k(1)*(1-S(2)/(S(1)*K(1)));
+    
+    fcc = zeros(nrxn,1);
+    for i=1:nrxn
+        fcc(i)=K(i)*S(i)/S(i+1)-1;
+    end
+    fcc=fcc/sum(fcc);
+    
+    fcc_group_control(:,j) = fcc;
+    S_group_control(:,j) = S;
+    var_group_control(j) = var(fcc);
+    gini_group_control(j) = GiniIndex(fcc);
+    flux_group_control(j) = flux_10steps;
+    min_val_of_fcc(j) = min(fcc);
+    
+    
+    if max(S)/min(S) > 5000
+        extreme_group_control(j) = 1;
+    end
+    
+    if min(S) < 0
+        wrong_group_control(j) = 1;
+    end
+    
+    
+end
+
+extreme_control = extreme_group_control >0;
+extreme_cond_group_control = Cond_group_control(extreme_control);
+
+wrong_control = wrong >0;
+
+var_group_control(extreme_control) = -1;
+var_group_control(wrong_control) = -1;
+delete = var_group_control == -1;
+
+fcc_group_control(:,delete) = [];
+%S_group_random(:,delete) = [];
+Cond_group_control(delete) = [];
+var_group_control(delete) = [];
+flux_group_control(delete) = [];
+gini_group_control(delete) = [];
+min_val_of_fcc(delete) = [];
+
+delete = min_val_of_fcc <= 0;
+
+fcc_group_control(:,delete) = [];
+%S_group_random(:,delete) = [];
+Cond_group_control(delete) = [];
+var_group_control(delete) = [];
+flux_group_control(delete) = [];
+gini_group_control(delete) = [];
+min_val_of_fcc(delete) = [];
+
+sum_wrong= sum(wrong_control);
+sum_extreme = sum(extreme_group_control);
+
+max_var = max(var_group_control);
+max_flux = max(flux_group_control);
+
+clear sum_* delete*
+
+%% Visualization and Statistical Analysis
+flux_group_control_positive = abs(flux_group_control);
+flux_group_random_positive = abs(flux_group_random);
+
+% Create a violin plot for flow values of random group and control group 
+figure('Position', [400, 30, 900, 750]);
+violinplot((log([flux_group_control_positive(1:length(flux_group_random_positive)),flux_group_random_positive])),[repmat({'Optimal allocation'},length(flux_group_random_positive),1),repmat({'Random allocation'},length(flux_group_random_positive),1)],'ShowData',false,'ViolinColor',[218 227 243]/255,'EdgeColor',[109 168 212]/255,'BoxColor',[109 168 212]/255,'MedianColor',[1 1 1],'ViolinAlpha',1);
+title(sprintf('Flux of zero reaction order pathway between \n random allocation and optimal allocation of rate constant'));
+ylabel('log(Flux [a.u.])')
+xtickangle(0)
+p = ranksum(log(flux_group_control_positive(1:length(flux_group_random_positive))),log(flux_group_random_positive))
+text(1.5,0.113,sprintf('Wilcoxon rank sum test \n p < 10^{-13}'),'FontSize',20)
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+box on
+
+% Create a violin plot for FCC gini index values of random group and control group
+figure('Position', [400, 30, 900, 750]);
+violinplot([gini_group_control(1:length(gini_group_random)),gini_group_random],[repmat({'Optimal allocation'},length(gini_group_random),1),repmat({'Random allocation'},length(gini_group_random),1)],'Width',0.4,'ShowData',false,'ViolinColor',[218 227 243]/255,'EdgeColor',[76 120 198]/255,'BoxColor',[109 168 212]/255,'MedianColor',[1 1 1],'ViolinAlpha',1);
+title(sprintf('Gini index of flux control coefficients between random allocation \n and optimal allocation of rate constant (zero order)'));
+ylabel('Gini index of FCCs [a.u.]');
+ylim([0 1])
+text(1.55,1.135,sprintf('Wilcoxon rank sum test \n p < 10^{-13}'),'FontSize',20)
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+xtickangle(0)
+box on
+
+% Create a violin plot for FCC variance values of random group and control group
+figure('Position', [400, 30, 900, 750]);
+v=violinplot([var_group_control(1:length(gini_group_random)),var_group_random],[repmat({'Optimal allocation'},length(gini_group_random),1),repmat({'Random allocation'},length(gini_group_random),1)],'Width',0.4,'ShowData',false,'ViolinColor',[218 227 243]/255,'EdgeColor',[76 120 198]/255,'BoxColor',[109 168 212]/255,'MedianColor',[1 1 1],'ViolinAlpha',1);
+title(sprintf('Variance of flux control coefficients between random allocation \n and optimal allocation of rate constant (zero order)'));
+ylabel('Variance of FCCs [a.u.]')
+xtickangle(0)
+text(1.5,0.113,sprintf('Wilcoxon rank sum test \n p < 10^{-13}'),'FontSize',20)
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+box on
+
+% Create a histogram for the difference in flux values 
+figure('Position', [400, 30, 900, 750]);
+flux_difference_between_control_and_random = flux_group_control_positive - flux_group_random_positive;
+flux_difference_between_control_and_random(isnan(flux_difference_between_control_and_random)) = [];
+
+histogram(flux_difference_between_control_and_random,'BinWidth',0.004,'BinLimits',[0,0.05],'FaceColor',[218 227 243]/255,'EdgeColor',[76 120 198]/255,'FaceAlpha',1);
+title1 = title(sprintf('Difference value of flux between \n control group and random group (zero order)'));
+xlabel1 = xlabel('Difference value of fluxes [a.u.]');
+ylabel1 = ylabel('Number');
+
+set(gca,'FontSize',20,'LineWidth',1.5)
+box on
+%% Perform statistical tests  
+% Conduct the Wilcoxon rank-sum tests for multiple groups  
+[rk_p_flux,h_flux] = ranksum(flux_group_control_positive,flux_group_random_positive);
+[rk_p_var,h_var] = ranksum(var_group_control,var_group_random);
+[rk_p_gini,h_gini] = ranksum(gini_group_control,gini_group_random);
