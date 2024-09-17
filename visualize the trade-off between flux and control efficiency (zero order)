@@ -1,0 +1,253 @@
+% Random group: the pathways with random k (rate constant) parameters
+%%
+nrxn=10;
+nsamples=400000;
+kSample_random=5.^normrnd(0,0.5,nrxn,nsamples);
+Sin=5.^normrnd(1,0.5,1,1);
+Sout=5.^normrnd(1,0.5,1,1);
+%%
+% Calculate flow and related parameters of random group 
+% Similar to the previous script
+fcc_group_random = zeros(nrxn,nsamples);
+
+S_group_random = zeros(nrxn+1,nsamples);
+Cond_group_random = zeros(nsamples,1);
+var_group_random = zeros(nsamples,1);
+gini_group_random = zeros(nsamples,1);
+flux_group_random = zeros(nsamples,1);
+unabs_flux_group_random = zeros(nsamples,1);
+extreme_group_random = zeros(nsamples,1);
+wrong_group_random = zeros(nsamples,1);
+x_group = zeros(nrxn,nsamples);
+wrong = zeros(nsamples,1);
+
+min_val_of_fcc = ones(nsamples,1);
+
+for j=1:nsamples
+    
+    kSample_random_sum = sum(kSample_random(:,j));
+    for i=1:nrxn
+        kSample_random(i,j) = kSample_random(i,j)/kSample_random_sum;
+    end
+    
+    K = KSample(:,j);
+    k = kSample_random(:,j);
+    
+    start_x = [1,1,1,1,1,1,1,1,1,1];
+    x_real = fsolve(@(start_x)fun_zero(start_x,K,k,Sin,Sout),start_x);
+    x_group(:,j) = x_real;
+    S = zeros(11,1);
+    S(1) = Sin;
+    S(11) = Sout;
+    for i =2:10
+        S(i) = S(i-1)*x_real(i-1);
+    end
+    
+    if abs(x_real(10)-S(11)/S(10)) > 0.0001
+        wrong(j) = 1;
+    end
+    
+    flux_10steps=k(1)*(1-S(2)/(S(1)*K(1)));
+    
+    fcc = zeros(nrxn,1);
+    for i=1:nrxn
+        fcc(i)=K(i)*S(i)/S(i+1)-1;
+    end
+    fcc=fcc/sum(fcc);
+    
+    fcc_group_random(:,j) = fcc;
+    S_group_random(:,j) = S;
+    var_group_random(j) = var(fcc);
+    gini_group_random(j) = GiniIndex(fcc);
+    flux_group_random(j) = flux_10steps;
+    min_val_of_fcc(j) = min(fcc);
+    
+    
+    if max(S)/min(S) > 5000
+        extreme_group_random(j) = 1;
+    end
+    
+    if min(S) < 0
+        wrong_group_random(j) = 1;
+    end
+    
+    
+end
+
+extreme_random = extreme_group_random >0;
+extreme_cond_group_random = Cond_group_random(extreme_random);
+
+wrong_random = wrong >0;
+
+var_group_random(extreme_random) = -1;
+var_group_random(wrong_random) = -1;
+delete = var_group_random == -1;
+
+fcc_group_random(:,delete) = [];
+%S_group_random(:,delete) = [];
+Cond_group_random(delete) = [];
+var_group_random(delete) = [];
+flux_group_random(delete) = [];
+gini_group_random(delete) = [];
+min_val_of_fcc(delete) = [];
+
+delete = min_val_of_fcc <= 0;
+
+fcc_group_random(:,delete) = [];
+%S_group_random(:,delete) = [];
+Cond_group_random(delete) = [];
+var_group_random(delete) = [];
+flux_group_random(delete) = [];
+gini_group_random(delete) = [];
+min_val_of_fcc(delete) = [];
+
+sum_wrong= sum(wrong_random);
+sum_extreme = sum(extreme_group_random);
+
+max_var = max(var_group_random);
+max_flux = max(flux_group_random);
+
+% Remove negative fluxes and high variances  
+var_group_random(flux_group_random<0) = [];
+flux_group_random(flux_group_random<0) = [];
+flux_group_random(var_group_random>=1) = [];
+var_group_random(var_group_random>=1) = [];
+
+%%
+% Remove negative fluxes and high variances  between flux and control efficiency
+figure('Position', [400, 30, 900, 750]);
+%scatter(flux_group_random,var_group_random,3,'o','filled','MarkerFaceColor',[218 227 243]/255,'MarkerEdgeColor',[218 227 243]/255);
+load('blue_colormap.mat')% Load colormap for visualization 
+dscatter2(flux_group_random,var_group_random,'COLORMAP',blue_colormap(5:75,:));
+
+ftitle = title(sprintf('Relationship between flux and regulatory efficiency \n zero order reaction pathway'));
+fylabel = ylabel('Variance of flux control coefficient [a.u.]');
+fxlabel = xlabel('Flux[a.u.]');
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+box on% Random group: the pathways with random k (rate constant) parameters
+%%
+nrxn=10;
+nsamples=400000;
+kSample_random=5.^normrnd(0,0.5,nrxn,nsamples);
+Sin=5.^normrnd(1,0.5,1,1);
+Sout=5.^normrnd(1,0.5,1,1);
+%%
+% Calculate flow and related parameters of random group 
+% Similar to the previous script
+fcc_group_random = zeros(nrxn,nsamples);
+
+S_group_random = zeros(nrxn+1,nsamples);
+Cond_group_random = zeros(nsamples,1);
+var_group_random = zeros(nsamples,1);
+gini_group_random = zeros(nsamples,1);
+flux_group_random = zeros(nsamples,1);
+unabs_flux_group_random = zeros(nsamples,1);
+extreme_group_random = zeros(nsamples,1);
+wrong_group_random = zeros(nsamples,1);
+x_group = zeros(nrxn,nsamples);
+wrong = zeros(nsamples,1);
+
+min_val_of_fcc = ones(nsamples,1);
+
+for j=1:nsamples
+    
+    kSample_random_sum = sum(kSample_random(:,j));
+    for i=1:nrxn
+        kSample_random(i,j) = kSample_random(i,j)/kSample_random_sum;
+    end
+    
+    K = KSample(:,j);
+    k = kSample_random(:,j);
+    
+    start_x = [1,1,1,1,1,1,1,1,1,1];
+    x_real = fsolve(@(start_x)fun_zero(start_x,K,k,Sin,Sout),start_x);
+    x_group(:,j) = x_real;
+    S = zeros(11,1);
+    S(1) = Sin;
+    S(11) = Sout;
+    for i =2:10
+        S(i) = S(i-1)*x_real(i-1);
+    end
+    
+    if abs(x_real(10)-S(11)/S(10)) > 0.0001
+        wrong(j) = 1;
+    end
+    
+    flux_10steps=k(1)*(1-S(2)/(S(1)*K(1)));
+    
+    fcc = zeros(nrxn,1);
+    for i=1:nrxn
+        fcc(i)=K(i)*S(i)/S(i+1)-1;
+    end
+    fcc=fcc/sum(fcc);
+    
+    fcc_group_random(:,j) = fcc;
+    S_group_random(:,j) = S;
+    var_group_random(j) = var(fcc);
+    gini_group_random(j) = GiniIndex(fcc);
+    flux_group_random(j) = flux_10steps;
+    min_val_of_fcc(j) = min(fcc);
+    
+    
+    if max(S)/min(S) > 5000
+        extreme_group_random(j) = 1;
+    end
+    
+    if min(S) < 0
+        wrong_group_random(j) = 1;
+    end
+    
+    
+end
+
+extreme_random = extreme_group_random >0;
+extreme_cond_group_random = Cond_group_random(extreme_random);
+
+wrong_random = wrong >0;
+
+var_group_random(extreme_random) = -1;
+var_group_random(wrong_random) = -1;
+delete = var_group_random == -1;
+
+fcc_group_random(:,delete) = [];
+%S_group_random(:,delete) = [];
+Cond_group_random(delete) = [];
+var_group_random(delete) = [];
+flux_group_random(delete) = [];
+gini_group_random(delete) = [];
+min_val_of_fcc(delete) = [];
+
+delete = min_val_of_fcc <= 0;
+
+fcc_group_random(:,delete) = [];
+%S_group_random(:,delete) = [];
+Cond_group_random(delete) = [];
+var_group_random(delete) = [];
+flux_group_random(delete) = [];
+gini_group_random(delete) = [];
+min_val_of_fcc(delete) = [];
+
+sum_wrong= sum(wrong_random);
+sum_extreme = sum(extreme_group_random);
+
+max_var = max(var_group_random);
+max_flux = max(flux_group_random);
+
+% Remove negative fluxes and high variances  
+var_group_random(flux_group_random<0) = [];
+flux_group_random(flux_group_random<0) = [];
+flux_group_random(var_group_random>=1) = [];
+var_group_random(var_group_random>=1) = [];
+
+%%
+% Remove negative fluxes and high variances  between flux and control efficiency
+figure('Position', [400, 30, 900, 750]);
+%scatter(flux_group_random,var_group_random,3,'o','filled','MarkerFaceColor',[218 227 243]/255,'MarkerEdgeColor',[218 227 243]/255);
+load('blue_colormap.mat')% Load colormap for visualization 
+dscatter2(flux_group_random,var_group_random,'COLORMAP',blue_colormap(5:75,:));
+
+ftitle = title(sprintf('Relationship between flux and regulatory efficiency \n zero order reaction pathway'));
+fylabel = ylabel('Variance of flux control coefficient [a.u.]');
+fxlabel = xlabel('Flux[a.u.]');
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+box on
