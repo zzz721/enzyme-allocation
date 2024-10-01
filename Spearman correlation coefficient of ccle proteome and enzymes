@@ -322,4 +322,184 @@ title(sprintf('Spearman correlation coefficients of glycolysis enzyme abundance 
 xlabel(sprintf('Spearman correlation coefficient'));   
 set(gca, 'FontSize', 20, 'LineWidth', 1.5);
 
+%%
+% Plot the bubble chart and box plot of the correlation coefficients of glycolysis enzymes and their distribution in 8 cancer cell lines
 
+% Load CCLE data and consolidate identical gene symbols
+ccle_protein = readtable('protein_MS_non_normalized_v1.csv');
+ccle_protein_symbol_pre = table2cell(ccle_protein(:,1));
+ccle_protein_ms_pre = table2array(ccle_protein(:,2:end));
+ccle_protein_ms_pre(isnan(ccle_protein_ms_pre))=0;
+
+% Remove bridge proteins
+cell_lines_name = ccle_protein.Properties.VariableNames(2:end);
+bridge = zeros(size(cell_lines_name));
+for i = 1:length(cell_lines_name)
+    if contains(cell_lines_name{i},'bridge')
+        bridge(i) = 1;
+    end
+end
+bridge = bridge == 1;
+ccle_protein_ms_pre(:,bridge) = []; 
+cell_lines_name(:,bridge) = [];
+
+protein_ms = zeros(size(ccle_protein_ms_pre,1),size(ccle_protein_ms_pre,2));
+
+% Combine gene symbols that were not merged
+for i = 1:length(ccle_protein_symbol_pre)
+    if strcmp(ccle_protein_symbol_pre{i},'deleted')
+        continue
+    end
+    same_sym = ismember(ccle_protein_symbol_pre,ccle_protein_symbol_pre(i));
+    
+    if sum(same_sym)>1
+        protein_ms(i,:) = sum(ccle_protein_ms_pre(same_sym,:));
+        pos = find(same_sym);
+        ccle_protein_symbol_pre(pos(2:end)) = {'deleted'};
+    else
+        protein_ms(i,:) = ccle_protein_ms_pre(same_sym,:);
+    end
+
+end
+
+deleted_sym = ismember(ccle_protein_symbol_pre,'deleted');
+ccle_protein_symbol = ccle_protein_symbol_pre;
+protein_ms(deleted_sym,:) = [];
+ccle_protein_symbol(deleted_sym) = []; 
+
+ccle_gene_symbol = ccle_protein_symbol;
+
+clear ccle_protein_ms
+clear ccle_protein_ms_pre
+clear ccle_protein_symbol
+clear ccle_protein_symbol_pre
+
+% Clean up cell line names
+cell_lines_name = regexprep(cell_lines_name,'_Ten\w*','');
+cell_lines_name = regexprep(cell_lines_name,'_','(');
+cell_lines_name = regexprep(cell_lines_name,'\w*(\w*','$&)');
+cell_lines_name = regexprep(cell_lines_name,')(',' ');
+
+%%
+% Calculate the correlation of protein distributions among cell lines
+
+protein_ms_norm = zeros(size(protein_ms,1),size(protein_ms,2));
+for i = 1:size(protein_ms_norm,2)
+    protein_ms_norm(:,i) = protein_ms(:,i)./sum(protein_ms(:,i));
+end
+protein_spearman_coefs = corr(protein_ms_norm,'type','Spearman','rows','pairwise');
+
+ccle_data = protein_ms_norm;
+
+protein_spearman_coefs_column = protein_spearman_coefs(:);
+protein_spearman_coefs_column(protein_spearman_coefs_column == 1) = [];
+
+%%
+% Perform correlation analysis for only metabolic proteins
+% First find the metabolic enzyme data present through gene symbols
+metabolic_enzyme_table = readtable('all_metabolic_enzyme.xlsx');
+metabolic_enzyme_symbol_unsplit = table2cell(metabolic_enzyme_table);
+metabolic_enzyme_symbol = [];
+for i = 1:length(metabolic_enzyme_symbol_unsplit)
+    list = split(metabolic_enzyme_symbol_unsplit(i),',');
+    metabolic_enzyme_symbol = [metabolic_enzyme_symbol;list];
+end
+
+% Identify intersection between CCLE and metabolic enzymes
+[intersect_symbol,intersect_in_all,intersect_in_metabolic] = intersect(ccle_gene_symbol,metabolic_enzyme_symbol_unsplit);
+metabolic_enzyme_ms = protein_ms_norm(intersect_in_all,:);
+[metabolic_protein_spearman_coefs,p] = corr(metabolic_enzyme_ms,'type','Spearman','rows','pairwise');
+metabolic_protein_spearman_coefs_column = metabolic_protein_spearman_coefs(:);
+sum(metabolic_protein_spearman_coefs_column == 1)
+metabolic_protein_spearman_coefs_column(metabolic_protein_spearman_coefs_column == 1) = [];
+
+%%
+% Identify specific cell lines
+famous_cell_lines = {'HCT116','HELA','MCF7','MDAMB231','HS294T','NCIH747','SH4','CAOV3','HT1197'};
+famous_cell_lines_standard_name = {'SH-4(skin)','HS-294-T(skin)','Caov-3(ovary)','HCT-116(large intestine)','HT-1197(urinary tract)','MCF-7(breast)','NCI-H747(large intestine)','MDA-MB-231(breast)'};
+famous_cell_lines_position = zeros(size(cell_lines_name));
+for i = 1:length(cell_lines_name)
+    for j = 1:length(famous_cell_lines)
+        if(contains(cell_lines_name{i},famous_cell_lines{j}))
+            famous_cell_lines_position(i) = 1;
+        end
+    end
+end
+famous_cell_lines_position = famous_cell_lines_position == 1;
+famous_cell_lines_metabolic_protein = metabolic_enzyme_ms(:,famous_cell_lines_position);   
+[famous_cell_lines_spearman,famous_cell_lines_p] = corr(famous_cell_lines_metabolic_protein,'type','Spearman');
+%%
+% Create a bubble matrix (for all genes in specific cell lines)
+figure;
+[bubble_x,bubble_y] = meshgrid([1:size(famous_cell_lines_spearman,1)],[1:size(famous_cell_lines_spearman,2)]);
+bubble_y = flipud(bubble_y);
+
+scatter(bubble_x(:),bubble_y(:),exp(famous_cell_lines_spearman(:)*6.5),famous_cell_lines_spearman(:),'filled','MarkerEdgeColor',[1 1 1]);
+colorbar('Ticks',[0,0.2,0.4,0.6,0.75,0.8,0.85,0.9,0.95,1]);
+xticklabels(famous_cell_lines_standard_name);
+yticklabels(famous_cell_lines_standard_name);
+xlim([0.5,8.5]);
+ylim([0.5,8.5]);
+
+title3 = title(sprintf('Spearman correlation coefficients of metabolic enzyme \n abundances between 8 human cancer cell lines'));
+set(gca,'FontSize',20,'lineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+set(title3,'FontSize',20);
+figureUnits = 'centimeter';
+set(gcf, 'Units', figureUnits, 'Position', [0 0 30 30]);
+box on;
+colormap(mycolorbar_1);
+figureWidth = 26;
+figureHeight = 21;
+set(gcf,'Units',figureUnits,'Position',[10,0,figureWidth,figureHeight]);
+colorbar('off');
+%%
+% Create a bubble matrix for glycolytic enzymes in cell lines
+gly_step_1 = [{'HK1'},{'HK2'},{'HK3'}];
+gly_step_2 = [{'GPI'}];
+gly_step_3 = [{'PFKM'},{'PFKP'},{'PFKL'}];
+gly_step_4 = [{'ALDOA'},{'ALDOB'}];
+gly_step_5 = [{'TPI1'}];
+gly_step_6 = [{'GAPDH'},{'GAPDHS'}];
+gly_step_7 = [{'PGK1'},{'PGK2'}];
+gly_step_8 = [{'PGAM4'},{'PGAM1'},{'PGAM2'},{'BPGM'}];
+gly_step_9 = [{'ENO1'},{'ENO2'},{'ENO3'}];
+gly_step_10 = [{'PKLR'},{'PKM'}];
+gly_total = [{gly_step_1};{gly_step_2};{gly_step_3};{gly_step_4};{gly_step_5};{gly_step_6};{gly_step_7};{gly_step_8};{gly_step_9};{gly_step_10}];
+
+ccle_glycolysis = zeros(length(gly_total),size(ccle_data,2));
+for i = 1:length(gly_total)
+    all_step_enz = gly_total{i};
+    ccle_this_step = zeros(1,size(ccle_data,2));
+    for j = 1:length(all_step_enz)
+        single_enz = all_step_enz{j};
+        pos = ismember(ccle_gene_symbol,single_enz);
+        if sum(pos)>0
+            ccle_this_step = ccle_this_step + ccle_data(pos,:);
+        end
+    end
+    ccle_glycolysis(i,:) = ccle_this_step;
+end
+
+famous_cell_lines_glycolysis_ms = ccle_glycolysis(:,famous_cell_lines_position);
+
+famous_cell_lines_glycolysis_ms_local_norm = zeros(size(famous_cell_lines_glycolysis_ms));
+for i = 1:size(famous_cell_lines_glycolysis_ms,2)
+    famous_cell_lines_glycolysis_ms_local_norm(:,i) = famous_cell_lines_glycolysis_ms(:,i)./sum(famous_cell_lines_glycolysis_ms(:,i));
+end
+
+[bubblex2,bubbley2] = meshgrid([1:size(famous_cell_lines_glycolysis_ms,2)],[1:size(famous_cell_lines_glycolysis_ms,1)]);
+bubbley2 = flipud(bubbley2);
+
+glycolysis_enzymes_name = {'HK','PGI','PFK','ALDO','TPI','GAPDH','PGK','PGM','ENO','PK'};
+glycolysis_enzymes_name = flip(glycolysis_enzymes_name);
+
+%%
+% Create a rectangular proportional plot for glycolysis 
+figure;
+plotFractions(flipud(famous_cell_lines_glycolysis_ms_local_norm)',(famous_cell_lines_standard_name),glycolysis_enzymes_name)
+set(gca,'FontSize',20,'PlotBoxAspectRatio',[1 1 1]);
+title4 = title(sprintf('Proteome allocation of glycolysis enzymes \n in 8 human cancer cell lines'));
+figureWidth = 25;
+xtickangle(90)
+figureHeight = 19;
+set(gcf,'Units',figureUnits,'Position',[10,2,figureWidth,figureHeight]);
