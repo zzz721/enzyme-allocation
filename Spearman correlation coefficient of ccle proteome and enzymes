@@ -1,0 +1,225 @@
+% Overall distribution of metabolic enzymes and proteins in CCLE (378 cell lines)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Load CCLE data and consolidate identical gene symbols
+ccle_protein = readtable('protein_MS_non_normalized_v1.csv');
+ccle_protein_symbol_pre = table2cell(ccle_protein(:,1));
+ccle_protein_ms_pre = table2array(ccle_protein(:,2:end));
+ccle_protein_ms_pre(isnan(ccle_protein_ms_pre)) = 0; % Replace NaN with 0
+
+% Remove bridge proteins
+cell_lines_name = ccle_protein.Properties.VariableNames(2:end);
+bridge = zeros(size(cell_lines_name));
+for i = 1:length(cell_lines_name)
+if contains(cell_lines_name{i}, 'bridge')
+bridge(i) = 1; % Identify bridge proteins
+end
+end
+bridge = bridge == 1;
+ccle_protein_ms_pre(:, bridge) = [];
+cell_lines_name(:, bridge) = [];
+
+% Initialize protein mass matrix
+protein_ms = zeros(size(ccle_protein_ms_pre, 1), size(ccle_protein_ms_pre, 2));
+
+% Combine gene symbols that were not merged
+for i = 1:length(ccle_protein_symbol_pre)
+if strcmp(ccle_protein_symbol_pre{i}, 'deleted')
+continue
+end
+same_sym = ismember(ccle_protein_symbol_pre, ccle_protein_symbol_pre(i));
+
+if sum(same_sym) > 1  
+    protein_ms(i, :) = sum(ccle_protein_ms_pre(same_sym, :)); % Sum mass for identical gene symbols  
+    pos = find(same_sym);  
+    ccle_protein_symbol_pre(pos(2:end)) = {'deleted'}; % Mark duplicates as deleted  
+else  
+    protein_ms(i, :) = ccle_protein_ms_pre(same_sym, :);  
+end  
+end
+
+deleted_sym = ismember(ccle_protein_symbol_pre, 'deleted');
+ccle_protein_symbol = ccle_protein_symbol_pre;
+protein_ms(deleted_sym, :) = []; % Remove deleted symbols
+ccle_protein_symbol(deleted_sym) = [];
+
+ccle_gene_symbol = ccle_protein_symbol;
+
+% Clear unnecessary variables
+clear ccle_protein_ms
+clear ccle_protein_ms_pre
+clear ccle_protein_symbol
+clear ccle_protein_symbol_pre
+
+% Clean up cell line names
+cell_lines_name = regexprep(cell_lines_name, '_Ten\w*', '');
+celllines_name = regexprep(cell_lines_name, '', '(');
+cell_lines_name = regexprep(cell_lines_name, '\w(\w', '$&');
+cell_lines_name = regexprep(cell_lines_name, ')(+', ' ');
+
+%%
+% Calculate the correlation of protein distributions among cell lines
+
+protein_ms_norm = zeros(size(protein_ms, 1), size(protein_ms, 2));
+for i = 1:size(protein_ms_norm, 2)
+protein_ms_norm(:, i) = protein_ms(:, i) ./ sum(protein_ms(:, i)); % Normalize protein mass
+end
+protein_spearman_coefs = corr(protein_ms_norm, 'type', 'Spearman', 'rows', 'pairwise'); % Calculate Spearman correlation
+
+ccle_data = protein_ms_norm;
+
+protein_spearman_coefs_column = protein_spearman_coefs(:);
+protein_spearman_coefs_column(protein_spearman_coefs_column == 1) = []; % Remove self-correlation
+
+% Load metabolic enzyme data
+metabolic_enzyme_table = readtable('all_metabolic_enzyme.xlsx');
+metabolic_enzyme_symbol_unsplit = table2cell(metabolic_enzyme_table);
+metabolic_enzyme_symbol = [];
+for i = 1:length(metabolic_enzyme_symbol_unsplit)
+list = split(metabolic_enzyme_symbol_unsplit(i), ',');
+metabolic_enzyme_symbol = [metabolic_enzyme_symbol; list]; % Split and store enzyme symbols
+end
+
+% Identify intersection between CCLE and metabolic enzymes
+[intersect_symbol, intersect_in_all, intersect_in_metabolic] = intersect(ccle_gene_symbol, metabolic_enzyme_symbol_unsplit);
+metabolic_enzyme_ms = protein_ms_norm(intersect_in_all, :);
+[metabolic_protein_spearman_coefs, p] = corr(metabolic_enzyme_ms, 'type', 'Spearman', 'rows', 'pairwise');
+metabolic_protein_spearman_coefs_column = metabolic_protein_spearman_coefs(:);
+sum(metabolic_protein_spearman_coefs_column == 1); % Count self-correlation
+metabolic_protein_spearman_coefs_column(metabolic_protein_spearman_coefs_column == 1) = []; % Remove self-correlation
+
+%%
+% Distribution of overall metabolic enzymes and proteins  
+met_all_group = [repmat({'Whole proteome'}, length(protein_spearman_coefs_column), 1); repmat({'Metabolic enzymes'}, length(metabolic_protein_spearman_coefs_column), 1)]; 
+
+% Create a violin plot to compare the distributions  
+figure('Position', [400, 30, 900, 750]);  
+violinplot([protein_spearman_coefs_column; metabolic_protein_spearman_coefs_column], met_all_group, 'Width', 0.45, 'ShowData', false, ...  
+    'ViolinColor', [218 227 243]/255, 'EdgeColor', [68 114 196]/255, ...  
+    'BoxColor', [109 168 212]/255, 'MedianColor', [1 1 1], 'ViolinAlpha', 1);  
+ftitle = title(sprintf('Similarity of protein distributions \n between 378 human cancer cell lines'));  
+fylabel = ylabel('Spearman correlation coefficient'); % Y-axis label  
+p = ranksum(protein_spearman_coefs_column, metabolic_protein_spearman_coefs_column); % Wilcoxon rank sum test  
+set(gca, 'FontSize', 20, 'XMinorTick', 'off', 'YTick', 0.5:0.1:1, 'LineWidth', 1.5, 'PlotBoxAspectRatio', [1 1 1]);  
+box on;
+
+%%  
+% Create a histogram for the Spearman correlation coefficients of metabolic enzyme distribution  
+figure('Position', [400, 30, 900, 750]);  
+histogram(metabolic_protein_spearman_coefs_column, 30, 'FaceColor', [218 227 243]/255, 'EdgeColor', [68 114 196]/255, 'LineWidth', 1.5);  
+set(gca, 'PlotBoxAspectRatio', [1 1 1]);  
+xlim([0.6 1]); % Set the x-axis limits  
+title(sprintf('Spearman correlation coefficients of metabolic enzyme distribution \n between 378 cancer cell lines')); % Title for the histogram  
+xlabel(sprintf('Spearman correlation coefficient')); % X-axis label  
+set(gca, 'FontSize', 20, 'LineWidth', 1.5);% Overall distribution of metabolic enzymes and proteins in CCLE (378 cell lines)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Load CCLE data and consolidate identical gene symbols
+ccle_protein = readtable('protein_MS_non_normalized_v1.csv');
+ccle_protein_symbol_pre = table2cell(ccle_protein(:,1));
+ccle_protein_ms_pre = table2array(ccle_protein(:,2:end));
+ccle_protein_ms_pre(isnan(ccle_protein_ms_pre)) = 0; % Replace NaN with 0
+
+% Remove bridge proteins
+cell_lines_name = ccle_protein.Properties.VariableNames(2:end);
+bridge = zeros(size(cell_lines_name));
+for i = 1:length(cell_lines_name)
+if contains(cell_lines_name{i}, 'bridge')
+bridge(i) = 1; % Identify bridge proteins
+end
+end
+bridge = bridge == 1;
+ccle_protein_ms_pre(:, bridge) = [];
+cell_lines_name(:, bridge) = [];
+
+% Initialize protein mass matrix
+protein_ms = zeros(size(ccle_protein_ms_pre, 1), size(ccle_protein_ms_pre, 2));
+
+% Combine gene symbols that were not merged
+for i = 1:length(ccle_protein_symbol_pre)
+if strcmp(ccle_protein_symbol_pre{i}, 'deleted')
+continue
+end
+same_sym = ismember(ccle_protein_symbol_pre, ccle_protein_symbol_pre(i));
+
+if sum(same_sym) > 1  
+    protein_ms(i, :) = sum(ccle_protein_ms_pre(same_sym, :)); % Sum mass for identical gene symbols  
+    pos = find(same_sym);  
+    ccle_protein_symbol_pre(pos(2:end)) = {'deleted'}; % Mark duplicates as deleted  
+else  
+    protein_ms(i, :) = ccle_protein_ms_pre(same_sym, :);  
+end  
+end
+
+deleted_sym = ismember(ccle_protein_symbol_pre, 'deleted');
+ccle_protein_symbol = ccle_protein_symbol_pre;
+protein_ms(deleted_sym, :) = []; % Remove deleted symbols
+ccle_protein_symbol(deleted_sym) = [];
+
+ccle_gene_symbol = ccle_protein_symbol;
+
+% Clear unnecessary variables
+clear ccle_protein_ms
+clear ccle_protein_ms_pre
+clear ccle_protein_symbol
+clear ccle_protein_symbol_pre
+
+% Clean up cell line names
+cell_lines_name = regexprep(cell_lines_name, '_Ten\w*', '');
+celllines_name = regexprep(cell_lines_name, '', '(');
+cell_lines_name = regexprep(cell_lines_name, '\w(\w', '$&');
+cell_lines_name = regexprep(cell_lines_name, ')(+', ' ');
+
+%%
+% Calculate the correlation of protein distributions among cell lines
+
+protein_ms_norm = zeros(size(protein_ms, 1), size(protein_ms, 2));
+for i = 1:size(protein_ms_norm, 2)
+protein_ms_norm(:, i) = protein_ms(:, i) ./ sum(protein_ms(:, i)); % Normalize protein mass
+end
+protein_spearman_coefs = corr(protein_ms_norm, 'type', 'Spearman', 'rows', 'pairwise'); % Calculate Spearman correlation
+
+ccle_data = protein_ms_norm;
+
+protein_spearman_coefs_column = protein_spearman_coefs(:);
+protein_spearman_coefs_column(protein_spearman_coefs_column == 1) = []; % Remove self-correlation
+
+% Load metabolic enzyme data
+metabolic_enzyme_table = readtable('all_metabolic_enzyme.xlsx');
+metabolic_enzyme_symbol_unsplit = table2cell(metabolic_enzyme_table);
+metabolic_enzyme_symbol = [];
+for i = 1:length(metabolic_enzyme_symbol_unsplit)
+list = split(metabolic_enzyme_symbol_unsplit(i), ',');
+metabolic_enzyme_symbol = [metabolic_enzyme_symbol; list]; % Split and store enzyme symbols
+end
+
+% Identify intersection between CCLE and metabolic enzymes
+[intersect_symbol, intersect_in_all, intersect_in_metabolic] = intersect(ccle_gene_symbol, metabolic_enzyme_symbol_unsplit);
+metabolic_enzyme_ms = protein_ms_norm(intersect_in_all, :);
+[metabolic_protein_spearman_coefs, p] = corr(metabolic_enzyme_ms, 'type', 'Spearman', 'rows', 'pairwise');
+metabolic_protein_spearman_coefs_column = metabolic_protein_spearman_coefs(:);
+sum(metabolic_protein_spearman_coefs_column == 1); % Count self-correlation
+metabolic_protein_spearman_coefs_column(metabolic_protein_spearman_coefs_column == 1) = []; % Remove self-correlation
+
+%%
+% Distribution of overall metabolic enzymes and proteins  
+met_all_group = [repmat({'Whole proteome'}, length(protein_spearman_coefs_column), 1); repmat({'Metabolic enzymes'}, length(metabolic_protein_spearman_coefs_column), 1)]; 
+
+% Create a violin plot to compare the distributions  
+figure('Position', [400, 30, 900, 750]);  
+violinplot([protein_spearman_coefs_column; metabolic_protein_spearman_coefs_column], met_all_group, 'Width', 0.45, 'ShowData', false, ...  
+    'ViolinColor', [218 227 243]/255, 'EdgeColor', [68 114 196]/255, ...  
+    'BoxColor', [109 168 212]/255, 'MedianColor', [1 1 1], 'ViolinAlpha', 1);  
+ftitle = title(sprintf('Similarity of protein distributions \n between 378 human cancer cell lines'));  
+fylabel = ylabel('Spearman correlation coefficient'); % Y-axis label  
+p = ranksum(protein_spearman_coefs_column, metabolic_protein_spearman_coefs_column); % Wilcoxon rank sum test  
+set(gca, 'FontSize', 20, 'XMinorTick', 'off', 'YTick', 0.5:0.1:1, 'LineWidth', 1.5, 'PlotBoxAspectRatio', [1 1 1]);  
+box on;
+
+%%  
+% Create a histogram for the Spearman correlation coefficients of metabolic enzyme distribution  
+figure('Position', [400, 30, 900, 750]);  
+histogram(metabolic_protein_spearman_coefs_column, 30, 'FaceColor', [218 227 243]/255, 'EdgeColor', [68 114 196]/255, 'LineWidth', 1.5);  
+set(gca, 'PlotBoxAspectRatio', [1 1 1]);  
+xlim([0.6 1]); % Set the x-axis limits  
+title(sprintf('Spearman correlation coefficients of metabolic enzyme distribution \n between 378 cancer cell lines')); % Title for the histogram  
+xlabel(sprintf('Spearman correlation coefficient')); % X-axis label  
+set(gca, 'FontSize', 20, 'LineWidth', 1.5);
