@@ -1,0 +1,140 @@
+% Choose whether KSample is a fixed value or variable
+nrxn = 10; % Number of reactions
+nsamples = 400000; % Number of samples
+KSample = repmat(10.^normrnd(0.1, 0.5, nrxn, 1), 1, nsamples); % K is fixed to observe trade-offs
+kSample_random = 10.^normrnd(0, 0.5, nrxn, nsamples); % Randomly generated rate constants
+Sin = 10.^normrnd(1, 1, 1, 1);
+Sout = 10.^normrnd(1, 1, 1, 1); 
+
+%%
+% Calculate various metrics for the random group (regardless of whether KSample is fixed)
+fcc_group_random = zeros(nrxn, nsamples);
+S_group_random = zeros(nrxn+1, nsamples);
+Cond_group_random = zeros(nsamples, 1);
+var_group_random = zeros(nsamples, 1);
+gini_group_random = zeros(nsamples, 1);
+flux_group_random = zeros(nsamples, 1); 
+unabs_flux_group_random = zeros(nsamples, 1); 
+extreme_group_random = zeros(nsamples, 1); 
+wrong_group_random = zeros(nsamples, 1);
+negative_random_double = zeros(nsamples, 1);
+
+% Loop through each sample to perform calculations
+for j = 1:nsamples
+% Normalize the random rate constants
+kSample_random_sum = sum(kSample_random(:, j));
+for i = 1:nrxn
+kSample_random(i, j) = kSample_random(i, j) / kSample_random_sum;
+end
+
+K = KSample(:, j);
+k = kSample_random(:, j);  
+  
+nmet = nrxn + 1;  
+M = zeros(nmet, nmet); 
+M(1, 1) = 1; 
+M(end, end) = 1; 
+  
+% Fill the matrix with reaction coefficients  
+for i = 1:nrxn - 1  
+    M(i + 1, i) = k(i);  
+    M(i + 1, i + 2) = k(i + 1) / K(i + 1);  
+    M(i + 1, i + 1) = -(k(i) / K(i) + k(i + 1));  
+end  
+  
+b = zeros(nmet, 1);
+b(1) = Sin; 
+b(end) = Sout;
+S = M \ b; 
+f = (k(1) * S(1) - k(1) * S(2) / K(1));  
+flux = abs(f); 
+  
+fcc = zeros(nrxn, 1);
+% Calculate control coefficients  
+for i = 1:nrxn  
+    fcc(i) = (S(i) * K(i) - S(i + 1)) / prod(K(1:i));  
+end  
+fcc = fcc / sum(fcc); 
+Q = S(2:end) ./ S(1:end - 1); 
+dg = log(Q ./ K);
+  
+% Store results for the random group  
+Cond_group_random(j) = cond(M);   
+fcc_group_random(:, j) = fcc;   
+S_group_random(:, j) = S;   
+var_group_random(j) = var(fcc);  
+gini_group_random(j) = GiniIndex(fcc); 
+flux_group_random(j) = flux;  
+unabs_flux_group_random(j) = f;  
+  
+% Check for extreme values  
+if max(S) / min(S) > 2000  
+    extreme_group_random(j) = 1; 
+end
+
+if min(S) < 0  
+    wrong_group_random(j) = 1; 
+end  
+  
+if f < 0  
+    negative_random_double(j) = 1; 
+end  
+end
+
+% Identify samples with negative flux
+negative_random = negative_random_double == 1;
+negative_fcc_random = fcc_group_random(negative_random); % Flux control coefficients for negative cases
+negative_K_random = KSample(negative_random); 
+negative_k_random = kSample_random(negative_random); 
+negative_flux_random = unabs_flux_group_random(negative_random); 
+
+% Identify extreme samples
+extreme_random = extreme_group_random > 0;
+extreme_cond_group_random = Cond_group_random(extreme_random); 
+
+% Set extreme samples to NaN (not a number) to exclude them from further analysis
+fcc_group_random(:, extreme_random) = nan;
+S_group_random(:, extreme_random) = nan;
+Cond_group_random(extreme_random) = nan;
+var_group_random(extreme_random) = nan;
+flux_group_random(extreme_random) = nan;
+gini_group_random(extreme_random) = nan;
+unabs_flux_group_random(extreme_random) = nan;
+sum_wrong_random = sum(wrong_group_random); % Count the number of wrong cases in the random group
+
+
+%%
+% Plotting: When K is a fixed value, illustrate the relationship between control and flow
+var_group_random(flux_group_random < 0) = [];
+flux_group_random(flux_group_random < 0) = []; 
+flux_group_random(var_group_random >= 1) = [];
+var_group_random(var_group_random >= 1) = []; 
+
+%%
+figure('Position', [400, 30, 900, 750]); % Set figure dimensions
+% Scatter plot to visualize the relationship between flux and regulatory efficiency
+load('blue_colormap.mat');
+load('Mycolormap1.mat'); 
+dscatter2(flux_group_random, var_group_random, 'COLORMAP', blue_colormap(5:75,:)); % Create density scatter plot
+ftitle = title(sprintf('Relationship between flux and regulatory efficiency \n first order reaction pathway')); % Title for the plot
+fylabel = ylabel('Flux control efficiency [a.u.]');   
+fxlabel = xlabel('Flux [a.u.]'); 
+set(gca, 'FontSize', 20, 'LineWidth', 1.5, 'PlotBoxAspectRatio', [1 1 1]); % Set axes properties  
+box on; % Add a box around the plot
+
+% The following code could be used to perform further analysis or comparisons  
+% between random and control groups, or to visualize the results.
+
+% Example: You might want to calculate the average metrics for both groups  
+average_flux_random = mean(flux_group_random); % Average flux for random group  
+average_var_random = mean(var_group_random); % Average variance for random group  
+average_gini_random = mean(gini_group_random); % Average Gini index for random group
+
+% Display average metrics for both groups  
+fprintf('Average metrics for Random Group:\n');  
+fprintf('Average Flux: %.4f\n', average_flux_random);  
+fprintf('Average Variance: %.4f\n', average_var_random);  
+fprintf('Average Gini Index: %.4f\n', average_gini_random);
+
+% You could also plot the average values or further analyze the differences  
+% between the random and control groups.
