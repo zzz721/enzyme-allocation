@@ -1,0 +1,301 @@
+% Choose whether KSample is a fixed value or variable
+nrxn = 10; % Number of reactions
+nsamples = 400000; % Number of samples
+
+% K as a variable, comparing random and control allocations
+kSample_random = 10.^normrnd(0, 0.5, nrxn, nsamples); % Randomly generated rate constants
+Sin = 10.^normrnd(1, 1, 1, 1); % Input concentration
+Sout = 10.^normrnd(1, 1, 1, 1); % Output concentration
+
+%%
+% Calculate various metrics for the random group (regardless of whether KSample is fixed)
+fcc_group_random = zeros(nrxn, nsamples); 
+S_group_random = zeros(nrxn + 1, nsamples); 
+Cond_group_random = zeros(nsamples, 1); 
+var_group_random = zeros(nsamples, 1); 
+gini_group_random = zeros(nsamples, 1);
+flux_group_random = zeros(nsamples, 1);
+unabs_flux_group_random = zeros(nsamples, 1);
+extreme_group_random = zeros(nsamples, 1);
+wrong_group_random = zeros(nsamples, 1);
+negative_random_double = zeros(nsamples, 1);
+
+for j = 1:nsamples
+% Normalize kSample_random so that its sum equals 1
+kSample_random_sum = sum(kSample_random(:, j));
+for i = 1:nrxn
+kSample_random(i, j) = kSample_random(i, j) / kSample_random_sum;
+end
+
+K = KSample(:, j); 
+k = kSample_random(:, j);
+  
+nmet = nrxn + 1;  
+M = zeros(nmet, nmet); 
+M(1, 1) = 1; 
+M(end, end) = 1; 
+for i = 1:nrxn-1  
+    M(i + 1, i) = k(i);  
+    M(i + 1, i + 2) = k(i + 1) / K(i + 1);  
+    M(i + 1, i + 1) = -(k(i) / K(i) + k(i + 1));  
+end  
+b = zeros(nmet, 1); 
+b(1) = Sin; 
+b(end) = Sout; 
+S = M \ b; 
+f = (k(1) * S(1) - k(1) * S(2) / K(1)); 
+flux = abs(f);  
+  
+fcc = zeros(nrxn, 1); 
+for i = 1:nrxn  
+    fcc(i) = (S(i) * K(i) - S(i + 1)) / prod(K(1:i));  
+end  
+fcc = fcc / sum(fcc);  
+Q = S(2:end) ./ S(1:end-1);  
+dg = log(Q ./ K);  
+  
+% Store results for random group  
+Cond_group_random(j) = cond(M); % Condition number  
+fcc_group_random(:, j) = fcc; % Flux control coefficients  
+S_group_random(:, j) = S; % Concentration vector  
+var_group_random(j) = var(fcc);   
+gini_group_random(j) = GiniIndex(fcc);   
+flux_group_random(j) = flux; 
+unabs_flux_group_random(j) = f;  
+  
+% Check for extreme concentrations  
+if max(S) / min(S) > 2000  
+extreme_group_random(j) = 1; % Mark as extreme if concentration ratio is too high
+end
+
+if min(S) < 0  
+    wrong_group_random(j) = 1; % Mark as wrong if any concentration is negative  
+end  
+  
+if f < 0  
+    negative_random_double(j) = 1; % Mark as negative if flux is negative  
+end  
+end
+
+% Identify samples with negative flux
+negative_random = negative_random_double == 1;
+negative_fcc_random = fcc_group_random(negative_random);
+negative_K_random = KSample(negative_random);
+negative_k_random = kSample_random(negative_random);
+negative_flux_random = unabs_flux_group_random(negative_random);
+
+% Identify extreme samples
+extreme_random = extreme_group_random > 0;
+extreme_cond_group_random = Cond_group_random(extreme_random);
+
+% Set extreme samples to NaN (not a number) to exclude them from analysis
+fcc_group_random(:, extreme_random) = nan;
+S_group_random(:, extreme_random) = nan;
+Cond_group_random(extreme_random) = nan;
+var_group_random(extreme_random) = nan;
+flux_group_random(extreme_random) = nan;
+gini_group_random(extreme_random) = nan;
+unabs_flux_group_random(extreme_random) = nan;
+
+% Count the number of wrong samples in random group
+sum_wrong_random = sum(wrong_group_random);
+
+%%
+% Calculate various metrics for the control group (KSample cannot be fixed)
+kSample_control = zeros(nrxn, nsamples); % Initialize control rate constants
+
+for i = 1:nsamples
+K = KSample(:, i);
+k = zeros(nrxn, 1); 
+k(1) = 1;
+for j = 2:nrxn
+k(j) = sqrt(k(j-1) * k(j-1) / K(j-1)); % Calculate subsequent rate constants
+end
+
+% Normalize control rate constants so that their sum equals 1  
+kSample_control_sum = sum(k);  
+for j = 1:nrxn  
+    k(j) = k(j) / kSample_control_sum;  
+end  
+kSample_control(:, i) = k; % Store normalized k values for control group  
+end
+
+% Initialize matrices for control group metrics
+fcc_group_control = zeros(nrxn, nsamples); 
+S_group_control = zeros(nrxn + 1, nsamples); 
+Cond_group_control = zeros(nsamples, 1); 
+var_group_control = zeros(nsamples, 1); 
+gini_group_control = zeros(nsamples, 1); 
+flux_group_control = zeros(nsamples, 1); 
+unabs_flux_group_control = zeros(nsamples, 1); 
+extreme_group_control = zeros(nsamples, 1); 
+wrong_group_control = zeros(nsamples, 1); 
+
+negative_control_double = zeros(nsamples, 1); % Indicator for negative flux values in control group
+
+for j = 1:nsamples
+K = KSample(:, j); % Current K values
+k = kSample_control(:, j); % Current k values
+
+nmet = nrxn + 1;  
+M = zeros(nmet, nmet); % Matrix for the system of equations  
+M(1, 1) = 1; % Boundary condition for input  
+M(end, end) = 1; % Boundary condition for output  
+for i = 1:nrxn-1  
+    M(i + 1, i) = k(i);  
+    M(i + 1, i + 2) = k(i + 1) / K(i + 1);  
+    M(i + 1, i + 1) = -(k(i) / K(i) + k(i + 1));  
+end  
+b = zeros(nmet, 1);   
+b(1) = Sin;
+b(end) = Sout;  
+S = M \ b;
+f = (k(1) * S(1) - k(1) * S(2) / K(1));  
+flux = abs(f); 
+  
+fcc = zeros(nrxn, 1); % Initialize flux control coefficients for control group
+for i = 1:nrxn
+fcc(i) = (S(i) * K(i) - S(i + 1)) / prod(K(1:i)); 
+end
+fcc = fcc / sum(fcc); 
+Q = S(2:end) ./ S(1:end-1); 
+dg = log(Q ./ K); 
+
+% Store results for control group  
+Cond_group_control(j) = cond(M);
+fcc_group_control(:, j) = fcc; 
+S_group_control(:, j) = S;  
+var_group_control(j) = var(fcc); 
+gini_group_control(j) = GiniIndex(fcc);  
+flux_group_control(j) = flux;
+unabs_flux_group_control(j) = f; 
+  
+% Check for extreme concentrations  
+if max(S) / min(S) > 2000  
+    extreme_group_control(j) = 1; % Mark as extreme if concentration ratio is too high  
+end  
+  
+if min(S) < 0  
+    wrong_group_control(j) = 1; % Mark as wrong if any concentration is negative  
+end  
+  
+if f < 0  
+    if extreme_group_control(j) < 1  
+        negative_control_double(j) = 1; % Mark as negative if flux is negative  
+    end  
+end  
+end
+
+% Identify samples with negative flux in the control group
+negative_control = negative_control_double == 1;
+
+% Identify extreme samples
+extreme_control = extreme_group_control > 0;
+extreme_cond_group_control = Cond_group_control(extreme_control);
+
+% Set extreme samples to NaN (not a number) to exclude them from analysis
+fcc_group_control(:, extreme_control) = nan;
+S_group_control(:, extreme_control) = nan;
+Cond_group_control(extreme_control) = nan;
+var_group_control(extreme_control) = nan;
+gini_group_control(extreme_control) = nan;
+flux_group_control(extreme_control) = nan;
+unabs_flux_group_control(extreme_control) = nan;
+
+% Count the number of wrong samples in control group
+sum_wrong_control = sum(wrong_group_control);
+
+%%
+% Plotting: When K is a fixed value, illustrate the relationship between control and flow
+% Remove negative flux and high variance samples from analysis
+var_group_random(flux_group_random < 0) = [];
+flux_group_random(flux_group_random < 0) = [];
+flux_group_random(var_group_random >= 1) = [];
+var_group_random(var_group_random >= 1) = [];
+
+%%
+% Create violin plot for Gini index comparison between random and optimal allocation
+figure('Position', [400, 30, 900, 750]);
+violinplot([gini_group_control, gini_group_random], ...
+[repmat({'Optimal allocation'}, length(gini_group_control), 1), ...
+repmat({'Random allocation'}, length(gini_group_control), 1)], ...
+'Width', 0.4, 'ShowData', false, ...
+'ViolinColor', [218 227 243]/255, 'EdgeColor', [76 120 198]/255, ...
+'BoxColor', [109 168 212]/255, 'MedianColor', [1 1 1], 'ViolinAlpha', 1);
+title(sprintf('Gini index of flux control coefficients between random allocation \n and optimal allocation of rate constant (first order)'));
+ylabel('Gini index of FCCs [a.u.]');
+ylim([0 1]);
+text(1.55, 1.135, sprintf('Wilcoxon rank sum test \n p < 10^{-13}'), 'FontSize', 20);
+p = ranksum(gini_group_control, gini_group_random); % Conduct Wilcoxon rank sum test
+set(gca, 'FontSize', 20, 'LineWidth', 1.5, 'PlotBoxAspectRatio', [1 1 1]);
+xtickangle(0);
+box on;
+
+%%
+% Create violin plot for variance comparison between random and optimal allocation
+figure('Position', [400, 30, 900, 750]);
+violinplot([var_group_control, var_group_random], ...
+[repmat({'Optimal allocation'}, length(var_group_control), 1), ...
+repmat({'Random allocation'}, length(var_group_control), 1)], ...
+'Width', 0.4, 'ShowData', false, ...
+    'ViolinColor', [218 227 243]/255, 'EdgeColor', [76 120 198]/255, ...  
+    'BoxColor', [109 168 212]/255, 'MedianColor', [1 1 1], 'ViolinAlpha', 1);  
+title(sprintf('Variance of flux control coefficients between random allocation \n and optimal allocation of rate constant (first order)'));  
+ylabel('Variance of FCCs [a.u.]');  
+xtickangle(0);  
+p = ranksum(var_group_control, var_group_random); % Conduct Wilcoxon rank sum test  
+text(1.5, 0.113, sprintf('Wilcoxon rank sum test \n p < 10^{-13}'), 'FontSize', 20);  
+set(gca, 'FontSize', 20, 'LineWidth', 1.5, 'PlotBoxAspectRatio', [1 1 1]);  
+box on;
+
+%%  
+% Create violin plot for flux comparison between random and optimal allocation  
+figure('Position', [400, 30, 900, 750]);  
+violinplot(log([flux_group_control, flux_group_random]), ...  
+    [repmat({'Optimal allocation'}, length(flux_group_control), 1), ...  
+    repmat({'Random allocation'}, length(flux_group_control), 1)], ...  
+    'ShowData', false, 'ViolinColor', [218 227 243]/255, ...  
+    'EdgeColor', [76 120 198]/255, 'BoxColor', [109 168 212]/255, ...  
+    'MedianColor', [1 1 1], 'ViolinAlpha', 1);  
+title(sprintf('Flux of first reaction order pathway between \n random allocation and optimal allocation of rate constant'));  
+ylabel('log(Flux [a.u.])');  
+xtickangle(0);  
+p = ranksum(flux_group_control, flux_group_random); % Conduct Wilcoxon rank sum test  
+text(1.5, 5.5, sprintf('Wilcoxon rank sum test \n p < 10^{-13}'), 'FontSize', 20);  
+set(gca, 'FontSize', 20, 'LineWidth', 1.5, 'PlotBoxAspectRatio', [1 1 1]);  
+box on;
+
+%%  
+% Calculate averages for random and control groups  
+average_var_random = mean(var_group_random); 
+average_var_control = mean(var_group_control);
+average_flux_random = mean(flux_group_random);
+average_flux_control = mean(flux_group_control);
+
+%%  
+% Create histogram to visualize the difference in flux between control and random groups  
+figure('Position', [400, 30, 900, 750]);  
+flux_difference_between_control_and_random = flux_group_control - flux_group_random; % Calculate the difference  
+flux_difference_between_control_and_random(isnan(flux_difference_between_control_and_random)) = []; % Remove NaN values
+
+histogram(flux_difference_between_control_and_random, 'BinWidth', 0.004, ...  
+    'BinLimits', [-0, 0.05], 'FaceColor', [218 227 243]/255, ...  
+    'EdgeColor', [76 120 198]/255, 'FaceAlpha', 1);  
+title1 = title(sprintf('Difference value of flux between \n control group and random group (first order)'));  
+xlabel1 = xlabel('Difference value of fluxes [a.u.]');  
+ylabel1 = ylabel('Number');
+
+set(gca, 'FontSize', 20, 'LineWidth', 1.5);  
+box on;
+
+%%  
+% Conduct Wilcoxon rank sum tests for various metrics  
+[rk_p_flux, h_flux] = ranksum(flux_group_control, flux_group_random); % Flux comparison  
+[rk_p_var, h_var] = ranksum(var_group_control, var_group_random); % Variance comparison  
+[rk_p_gini, h_gini] = ranksum(gini_group_control, gini_group_random); % Gini index comparison
+
+% Display results of the tests  
+fprintf('Wilcoxon rank sum test results:\n');  
+fprintf('Flux: p-value = %.4e\n', rk_p_flux);  
+fprintf('Variance: p-value = %.4e\n', rk_p_var);  
+fprintf('Gini index: p-value = %.4e\n', rk_p_gini);
