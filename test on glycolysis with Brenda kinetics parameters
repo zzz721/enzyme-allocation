@@ -1,0 +1,155 @@
+% Draw figures: find parameters for 5 glycolysis reactions to predict zero-order reaction K, first-order reaction K, and actual values
+load Recon3D_301.mat
+subsystem = Recon3D.subSystems;
+
+glycolysis_place = zeros(length(subsystem),1);
+for i = 1:length(subsystem)
+if contains(subsystem{i},'glycolysis','IgnoreCase',true)
+glycolysis_place(i) = 1;
+end
+end
+glycolysis_place = glycolysis_place == 1;
+glyco_rxn_name = Recon3D.rxnNames(glycolysis_place);
+glyco_rxn_gene = Recon3D.grRules(glycolysis_place);
+
+gly_step_1 = [{'HK1'},{'HK2'},{'HK3'}];
+gly_step_2 = [{'GPI'}];
+gly_step_3 = [{'PFKM'},{'PFKP'},{'PFKL'}];
+gly_step_4 = [{'ALDOA'},{'ALDOB'}];
+gly_step_5 = [{'TPI1'}];
+gly_step_6 = [{'GAPDH'},{'GAPDHS'}];
+gly_step_7 = [{'PGK1'},{'PGK2'}];
+gly_step_8 = [{'PGAM1'},{'PGAM2'}];
+gly_step_9 = [{'ENO1'},{'ENO2'},{'ENO3'}];
+gly_step_10 = [{'PKLR'},{'PKM'}];
+gly_total = [{gly_step_1};{gly_step_2};{gly_step_3};{gly_step_4};{gly_step_5};{gly_step_6};{gly_step_7};{gly_step_8};{gly_step_9};{gly_step_10}];
+%%
+% Read CCLE data, integrate identical gene symbols
+ccle_protein = readtable('protein_MS_non_normalized_v1.csv');
+ccle_protein_symbol_pre = table2cell(ccle_protein(:,1));
+ccle_protein_ms_pre = table2array(ccle_protein(:,2:end));
+ccle_protein_ms_pre(isnan(ccle_protein_ms_pre))=0.0001;
+
+%remove the "bridge" 
+cell_lines_name = ccle_protein.Properties.VariableNames(2:end);
+bridge = zeros(size(cell_lines_name));
+for i = 1:length(cell_lines_name)
+if contains(cell_lines_name{i},'bridge')
+bridge(i) = 1;
+end
+end
+bridge = bridge == 1;
+ccle_protein_ms_pre(:,bridge) = [];
+
+ccle_protein_ms = zeros(size(ccle_protein_ms_pre,1),size(ccle_protein_ms_pre,2));
+
+% Combine the unmerged gene symbols
+for i = 1:length(ccle_protein_symbol_pre)
+if strcmp(ccle_protein_symbol_pre{i},'deleted')
+continue
+end
+same_sym = ismember(ccle_protein_symbol_pre,ccle_protein_symbol_pre(i));
+
+if sum(same_sym)>1  
+    ccle_protein_ms(i,:) = sum(ccle_protein_ms_pre(same_sym,:));  
+    pos = find(same_sym);  
+    ccle_protein_symbol_pre(pos(2:end)) = {'deleted'};  
+else  
+    ccle_protein_ms(i,:) = ccle_protein_ms_pre(same_sym,:);  
+end
+end
+
+deleted_sym = ismember(ccle_protein_symbol_pre,'deleted');
+ccle_protein_symbol = ccle_protein_symbol_pre;
+ccle_protein_ms(deleted_sym,:) = [];
+ccle_protein_symbol(deleted_sym) = [];
+
+ccle_gene_symbol = ccle_protein_symbol;
+ccle_data = ccle_protein_ms;
+clear ccle_protein_ms ccle_protein_ms_pre ccle_protein_symbol ccle_protein_symbol_pre
+
+%get the kinetic paramters and the ccle ms data for glcolysis
+ccle_glycolysis = zeros(length(gly_total),size(ccle_data,2));
+for i = 1:length(gly_total)
+all_step_enz = gly_total{i};
+ccle_this_step = zeros(1,size(ccle_data,2));
+for j = 1:length(all_step_enz)
+single_enz = all_step_enz{j};
+pos = ismember(ccle_gene_symbol,single_enz);
+if sum(pos)>0
+ccle_this_step = ccle_this_step + ccle_data(pos,:);
+end
+end
+ccle_glycolysis(i,:) = ccle_this_step;
+
+end
+
+glycolysis_parameter_table = readtable('Glycolysis_KM_kcat.xlsx');
+glycolysis_parameter = table2array(glycolysis_parameter_table(:,end-1))./sqrt(table2array(glycolysis_parameter_table(:,end)));
+
+stimulated_k = ccle_glycolysis.*glycolysis_parameter;
+%%
+%calculate the theorical equilibrium constant
+
+stimulated_k_group_1 = stimulated_k(1:2,:);
+stimulated_k_group_2 = stimulated_k(2:3,:);
+stimulated_k_group_3 = stimulated_k(3:4,:);
+stimulated_k_group_4 = stimulated_k(6:7,:);
+stimulated_k_group_5 = stimulated_k(9:10,:);
+stimulated_k_group_1_normed = stimulated_k_group_1./sum(stimulated_k_group_1);
+stimulated_k_group_2_normed = stimulated_k_group_2./sum(stimulated_k_group_2);
+stimulated_k_group_3_normed = stimulated_k_group_3./sum(stimulated_k_group_3);
+stimulated_k_group_4_normed = stimulated_k_group_4./sum(stimulated_k_group_4);
+stimulated_k_group_5_normed = stimulated_k_group_5./sum(stimulated_k_group_5);
+
+theoretical_K_group1 = zeros(size(stimulated_k_group_1_normed,1)-1,size(stimulated_k_group_1_normed,2));
+for i = 1:size(theoretical_K_group1)
+theoretical_K_group1(i,:) = (stimulated_k_group_1_normed(i,:).^2)./stimulated_k_group_1_normed(i+1,:).^2;
+end
+theoretical_K_group2 = zeros(size(stimulated_k_group_2_normed,1)-1,size(stimulated_k_group_2_normed,2));
+for i = 1:size(theoretical_K_group2)
+theoretical_K_group2(i,:) = (stimulated_k_group_2_normed(i,:).^2)./stimulated_k_group_2_normed(i+1,:).^2;
+end
+theoretical_K_group3 = zeros(size(stimulated_k_group_3_normed,1)-1,size(stimulated_k_group_3_normed,2));
+for i = 1:size(theoretical_K_group3)
+theoretical_K_group3(i,:) = (stimulated_k_group_3_normed(i,:).^2)./stimulated_k_group_3_normed(i+1,:).^2;
+end
+theoretical_K_group4 = zeros(size(stimulated_k_group_4_normed,1)-1,size(stimulated_k_group_4_normed,2));
+for i = 1:size(theoretical_K_group4)
+theoretical_K_group4(i,:) = (stimulated_k_group_4_normed(i,:).^2)./stimulated_k_group_4_normed(i+1,:).^2;
+end
+theoretical_K_group5 = zeros(size(stimulated_k_group_5_normed,1)-1,size(stimulated_k_group_5_normed,2));
+for i = 1:size(theoretical_K_group5)
+theoretical_K_group5(i,:) = (stimulated_k_group_5_normed(i,:).^2)./stimulated_k_group_5_normed(i+1,:).^2;
+end
+
+glycolysis_DeltaG = [-16.7,1.7,-14.2,23.9,7.6,6.3,-18.8,4.4,-3.2,-31.4];
+glycolysis_K = exp(-1*(1000*glycolysis_DeltaG)./(298.15*8.314));
+glycolysis_K = [glycolysis_K(1:3)';glycolysis_K(6);glycolysis_K(9)];
+theoretical_K_group_total = [theoretical_K_group1;theoretical_K_group2;theoretical_K_group3;theoretical_K_group4;theoretical_K_group5];
+glycolysis_reaction_pair_name = [{'Glc->G6P->F6P'},{'G6P->F6P->FBP'},{'F6P->FBP->DHAP+GAP'},{'GAP->BPG->3PG'},{'2PG->PEP->Pyr'}];
+glycolysis_reaction_name = [{'Glc->G6P'},{'G6P->F6P'},{'F6P->FBP'},{'GAP->BPG'},{'2PG->PEP'}];
+%%
+% Draw bar plots and violin plots to describe the four glcolysis reaction pairs
+% Bar plot for the real equilibrium constant distribution
+figure('Position', [400, 30, 900, 750]);
+bar(log(glycolysis_K(2:end)),'FaceColor',[218 227 243]/255,'EdgeColor',[68,114,196]/255,'LineWidth',1.5);
+xticklabels(glycolysis_reaction_pair_name(2:5));  
+ylabel('log(K_i) [a.u.]');  
+title('log(K_i) of upstream reaction in glycolysis')
+
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);  
+xtickangle(30)  
+figureUnits = 'centimeters';  
+ 
+%%  
+% Violin plot for the theorical equilibrium constant distribution
+figure('Position', [400, 30, 900, 750]);  
+violin_color = brewermap(4,'Pastel1');  
+violinplot(log(theoretical_K_group_total(2:5,:))',glycolysis_reaction_pair_name(2:5),'Width',0.4,'ShowData',false,'ViolinColor',[218 227 243]/255,'EdgeColor',[68 114 196]/255,'BoxColor',[60 160 221]/255,'MedianColor',[1 1 1],'ViolinAlpha',1);  
+title('log(k_i^2/k_{i+1}^2) of 4 reaction pairs in glycolysis')  
+ylabel('log(k_i^2/k_{i+1}^2) [a.u.]')  
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);  
+figureWidth = 19.5;  
+figureHeight = 24;   
+box on
