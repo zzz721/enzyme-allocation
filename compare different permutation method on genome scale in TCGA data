@@ -1,3 +1,4 @@
+%Test on genome scale
 %The purpose of this script is to compare the effects of three different shuffling methods on the correlation coefficient:
 %1.Shuffling the mass spectrometry data
 %2.Shuffling the kinetic parameters
