@@ -9,32 +9,33 @@ protein_ms_pre(isnan(protein_ms_pre))=0.0001;
 cell_lines_name = protein_ms_table.Properties.VariableNames(2:end);
 bridge = zeros(size(cell_lines_name));
 for i = 1:length(cell_lines_name)
-if contains(cell_lines_name{i},'bridge')
-bridge(i) = 1;
-end
+    if contains(cell_lines_name{i},'bridge')
+        bridge(i) = 1;
+    end
 end
 bridge = bridge == 1;
 
-protein_ms_pre(:,bridge) = [];
+protein_ms_pre(:,bridge) = []; 
 protein_ms = zeros(size(protein_ms_pre));
 cell_lines_name = cell_lines_name(1,~bridge);
 
 clear bridge
-
+   
 % There are duplicate gene symbols in CCLE, first combine the unmerged gene symbols
 for i = 1:length(protein_symbol_pre)
-if strcmp(protein_symbol_pre{i},'deleted')
-continue
-end
-same_symbol_pos = ismember(protein_symbol_pre,protein_symbol_pre(i));
+    if strcmp(protein_symbol_pre{i},'deleted')
+        continue
+    end
+    same_symbol_pos = ismember(protein_symbol_pre,protein_symbol_pre(i));
+    
+    if sum(same_symbol_pos)>1
+        protein_ms(i,:) = sum(protein_ms_pre(same_symbol_pos,:));
+        pos = find(same_symbol_pos);
+        protein_symbol_pre(pos(2:end)) = {'deleted'};
+    else
+        protein_ms(i,:) = protein_ms_pre(same_symbol_pos,:);
+    end
 
-if sum(same_symbol_pos)>1  
-    protein_ms(i,:) = sum(protein_ms_pre(same_symbol_pos,:));  
-    pos = find(same_symbol_pos);  
-    protein_symbol_pre(pos(2:end)) = {'deleted'};  
-else  
-    protein_ms(i,:) = protein_ms_pre(same_symbol_pos,:);  
-end
 end
 
 deleted_sym = ismember(protein_symbol_pre,'deleted');
@@ -42,13 +43,14 @@ protein_symbol = protein_symbol_pre;
 protein_ms(deleted_sym,:) = [];
 protein_symbol(deleted_sym) = [];
 
-clear pos proteinsymbol_pre deleted_sym same* protein_ms_pre protein_ms_table used_symbol_pos expression_sum
+clear pos protein_symbol_pre deleted_sym same_* protein_ms_pre protein_ms_table used_symbol_pos expression_sum 
 %%
 % Provide the kinetic parameters of various isozymes in glycolysis obtained from deep learning
 glycolysis_km = [{[0.11266,0.07636,0.09738,2.27190]},{[0.14276]},{[0.63713,0.18462,0.39181]},{[0.15178,0.01888,0.02963]},...
-{[0.30868]},{[0.52958]},{[0.02558,0.06790]},{[0.16316,0.07849]},{[0.08089,0.18109,0.57327]},{[0.54278,0.04653]}];
+    {[0.52958]},{[0.02558,0.06790]},{[0.16316,0.07849]},{[0.08089,0.18109,0.57327]},{[0.54278,0.04653]}];
+
 glycolysis_kcat = [{[5.2935,5.2935,2.1311,16.4621]},{[66.9867]},{[9.6736,6.8316,18.5202]},{[1.7248,0.2444,8.63822]}...
-{[485.2629]},{[9.1578]},{[69.1423,13.8187]},{[34.0914,25.8809]},{[10.0788,105.2464,58.0222]},{[118.6542,141.2942]}];
+    {[9.1578]},{[69.1423,13.8187]},{[34.0914,25.8809]},{[10.0788,105.2464,58.0222]},{[118.6542,141.2942]}];
 
 % Create a permuted mass spectrometry data table
 permutated_ms = reshape(protein_ms(randperm(numel(protein_ms))), size(protein_ms));
@@ -56,51 +58,52 @@ permutated_ms = reshape(protein_ms(randperm(numel(protein_ms))), size(protein_ms
 % Map the kinetic data of each isozyme and calculate the apparent kinetic constant for each reaction
 % Also calculate a permuted group where mass spectrometry data does not correspond to kinetic parameters
 glycolysis_symbol = [{{'HK1','HK2','HK3'}};{{'GPI'}};{{'PFKM','PFKL','PFKP'}};{{'ALDOA','ALDOB','ALDOC'}};...
-{{'TPI1'}};{{'GAPDH'}};{{'PGK1','PGK2'}};{{'PGAM1','PGAM2'}};{{'ENO1','ENO2','ENO3'}};{{'PKM','PKLR'}}];
+    {{'GAPDH'}};{{'PGK1','PGK2'}};{{'PGAM1','PGAM2'}};{{'ENO1','ENO2','ENO3'}};{{'PKM','PKLR'}}];
 
 protein_apparent_k = zeros(length(glycolysis_symbol),size(protein_ms,2));
 permutated_apparent_k = zeros(length(glycolysis_symbol),size(protein_ms,2));
 
 for i = 1:length(glycolysis_symbol)
-the_enzymes = glycolysis_symbol{i};
-the_km = glycolysis_km{i};
-the_kcat = glycolysis_kcat{i};
-the_val = zeros(1,size(protein_ms,2));
-the_permutated_val = zeros(1,size(protein_ms,2));
-for j = 1:length(the_enzymes)
-the_val = the_val + protein_ms(ismember(protein_symbol,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
-the_permutated_val = the_permutated_val + permutated_ms(ismember(protein_symbol,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
-end
-protein_apparent_k(i,:) = the_val;
-permutated_apparent_k(i,:) = the_permutated_val;
+    the_enzymes = glycolysis_symbol{i};
+    the_km = glycolysis_km{i};
+    the_kcat = glycolysis_kcat{i};
+    the_val = zeros(1,size(protein_ms,2));
+    the_permutated_val = zeros(1,size(protein_ms,2));
+    for j = 1:length(the_enzymes)
+        the_val = the_val + protein_ms(ismember(protein_symbol,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
+        the_permutated_val = the_permutated_val + permutated_ms(ismember(protein_symbol,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
+    end
+    protein_apparent_k(i,:) = the_val;
+    permutated_apparent_k(i,:) = the_permutated_val;
 end
 
-clear pos pos cell_type the
+
+clear pos *_pos cell_type  the_*
 %%
 % Calculate the theoretical equilibrium constants for each glycolysis reaction
-glycolysis_DeltaG = [-16.7,1.7,-14.2,23.9,7.6,6.3,-18.8,4.4,-3.2,-31.4];
+glycolysis_DeltaG = [-16.7,1.7,-14.2,23.9,6.3,-18.8,4.4,-3.2,-31.4];
 glycolysis_K = exp(-1*(1000*glycolysis_DeltaG)./(298.15*8.314));
 
 glycolysis_estimated_K = zeros(size(protein_apparent_k,1)-1,size(protein_apparent_k,2));
 for i = 1:size(protein_apparent_k,1)-1
-glycolysis_estimated_K(i,:) = (protein_apparent_k(i,:).^2)./protein_apparent_k(i+1,:).^2;
+    glycolysis_estimated_K(i,:) = (protein_apparent_k(i,:).^2)./protein_apparent_k(i+1,:).^2;
 end
-
+    
 permutated_estimated_K = zeros(size(permutated_apparent_k,1)-1,size(permutated_apparent_k,2));
 for i = 1:size(permutated_apparent_k,1)-1
-permutated_estimated_K(i,:) = (permutated_apparent_k(i,:).^2)./permutated_apparent_k(i+1,:).^2;
+    permutated_estimated_K(i,:) = (permutated_apparent_k(i,:).^2)./permutated_apparent_k(i+1,:).^2;
 end
 
 %%
 % Calculate the Spearman correlation coefficient between the theoretical equilibrium constants and those inferred from Gibbs free energy
 glycolysis_spearman = zeros(size(glycolysis_estimated_K,2),1);
 for i = 1:length(glycolysis_spearman)
-glycolysis_spearman(i) = corr(glycolysis_estimated_K(:,i),glycolysis_K(1:9)','type','Spearman');
+    glycolysis_spearman(i) = corr(glycolysis_estimated_K(:,i),glycolysis_K(1:8)','type','Spearman');
 end
 
 permutated_spearman = zeros(size(permutated_estimated_K,2),1);
 for i = 1:length(permutated_spearman)
-permutated_spearman(i) = corr(permutated_estimated_K(:,i),glycolysis_K(1:9)','type','Spearman');
+    permutated_spearman(i) = corr(permutated_estimated_K(:,i),glycolysis_K(1:8)','type','Spearman');
 end
 
 clear permutated_estimated_K *_apparent_k
@@ -112,16 +115,17 @@ max_spearman = max([permutated_spearman;glycolysis_spearman]);
 
 figure('Position', [400, 30, 900, 750]);
 h1 = histogram(permutated_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[191 191 191]/255,'EdgeColor',[166 166 166]/255,'FaceAlpha',0.25);
-title(sprintf('Correlation between ki^2/k{i+1}^2 and K_i in glycolysis'));
+title(sprintf('Correlation between k_i^2/k_{i+1}^2 and K_i in glycolysis'));
 xlabel(sprintf('Spearman correlation coefficient'));
 xlim([min_spearman-0.05 max_spearman+0.05])
-ylabel('Number of cell lines');
+ylabel('Cell line number');
 hold on
+
 
 h2 = histogram(glycolysis_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[218 227 243]/255,'EdgeColor',[68 114 196]/255,'FaceAlpha',1);
 %histogram(glycolysis_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[182 213 240]/255,'EdgeColor',[46 129 212]/255,'FaceAlpha',0.25);
 legend([h2 h1],{'original data','permutated data'},'Location','northwest');
-[p,h] = ranksum(glycolysis_spearman,permutated_spearman);
+[p,h] = ranksum(glycolysis_spearman,permutated_spearman)
 text(min_spearman,max([h1.Values,h2.Values])*0.88,sprintf('Wilcoxon rank sum test p < 1*e^{-13}'),'FontSize',20)
 hold off
 set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
@@ -129,23 +133,22 @@ set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
 clear h h1 h2
 %%
 % Select one cell line as an example and plot a scatter plot
-pos = find(contains(cell_lines_name,'HCT116'));
+pos = find(contains(cell_lines_name,'SW48_'));
 the_estimated_K = glycolysis_estimated_K(:,pos);
-[the_coe,the_p] = corr(the_estimated_K,glycolysis_K(1:9)','type','Spearman');
-min_lim = min([log(the_estimated_K);log(glycolysis_K')]);  
-max_lim = max([log(the_estimated_K);log(glycolysis_K')]);  
-figure('Position', [400, 30, 900, 750]);  
-scatter(log(the_estimated_K),log(glycolysis_K(1:9)),850,[248 205 172]/255,'filled');  
-box on  
-title('HCT-116')  
-xlabel('log(k_{i}/k_{i+1})^2')  
-ylabel('log(K_i) of upstream reaction')  
-xlim([min_lim-2 max_lim]);  
-ylim([min_lim-2 max_lim]);  
-set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);  
-text(-10.8,10,sprintf('Spearman correlation coefficient = 0.40 \n p value = 0.29'),'FontSize',16)
-
-glycolysis_reaction_name = [{'Glc->G6P->F6P'},{'G6P->F6P->FBP'},{'F6P->FBP->DHAP+GAP'},{'FBP->DHAP+GAP->2GAP'},{'DHAP->GAP->BPG'},{'GAP->BPG->3PG'},{'BPG->3PG->2PG'},{'3PG->2PG->PEP'},{'2PG->PEP->Pyr'}];   
-for i = 1:length(the_estimated_K)      
-    text(log(the_estimated_K(i)),log(glycolysis_K(i)),glycolysis_reaction_name{i}, 'VerticalAlignment', 'middle', 'HorizontalAlignment', 'center','FontSize', 12);    
+[the_coe,the_p] = corr(the_estimated_K,glycolysis_K(1:8)','type','Spearman')
+min_lim = min([log(the_estimated_K);log(glycolysis_K')]);
+max_lim = max([log(the_estimated_K);log(glycolysis_K')]);
+figure('Position', [400, 30, 900, 750]);
+scatter(log(the_estimated_K),log(glycolysis_K(1:8)),850,[248 205 172]/255,'filled');
+box on
+title('SW-48')
+xlabel('log(k_{i}/k_{i+1})^2')
+ylabel('log(K_i) of upstream reaction')
+xlim([min_lim-2 max_lim]);
+ylim([min_lim-2 max_lim]);
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+text(-10.8,10.5,sprintf('Spearman correlation coefficient = 0.524 \n p value = 0.197'),'FontSize',20)
+glycolysis_reaction_name = [{'Glc->G6P->F6P'},{'G6P->F6P->FBP'},{'F6P->FBP->DHAP+GAP'},{'FBP->2GAP->2BPG'},{'GAP->BPG->3PG'},{'BPG->3PG->2PG'},{'3PG->2PG->PEP'},{'2PG->PEP->Pyr'}]; 
+for i = 1:length(the_estimated_K)  
+    text(log(the_estimated_K(i)),log(glycolysis_K(i)) ,glycolysis_reaction_name{i}, 'VerticalAlignment', 'middle', 'HorizontalAlignment', 'center','FontSize', 16);  
 end
