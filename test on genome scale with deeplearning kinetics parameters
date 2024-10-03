@@ -1,0 +1,727 @@
+% Validate the data obtained from deep learning on the CCLE dataset at the genome level and plot the histogram of Spearman correlation coefficients.  
+% Validate the KM kcat data obtained from deep learning; this validation is data-driven, using dp data as a guide and treating recon as a framework.  
+load pos_recon_km.mat 
+load precise_pos_recon_kcat_new.mat
+load neg_recon_km.mat
+load precise_neg_recon_kcat_new.mat
+%%
+% First, take the geometric mean of the values for gene IDs where substrates and reaction numbers are the same.  
+for i = 1:size(pos_recon_km,1)
+    the_id = pos_recon_km(i,1);
+    the_val = pos_recon_km(i,3);
+    num = 1;
+    if(the_id ~= 0)
+        for j = i + 1:size(pos_recon_km,1)
+            if(pos_recon_km(j,1)==0)
+                continue;
+            elseif(the_id ~= pos_recon_km(j,1))
+                break;
+            elseif(pos_recon_km(i,2)==pos_recon_km(j,2)&&pos_recon_km(i,4)==pos_recon_km(j,4))
+                the_val = the_val*pos_recon_km(j,3);
+                num = num + 1;
+                pos_recon_km(j,1) = 0;
+            end
+        end
+    end
+    the_val = the_val^(1/num);
+    pos_recon_km(i,3) = the_val;
+end
+pos_recon_km(pos_recon_km(:,1)==0,:) = [];
+
+for i = 1:size(neg_recon_km,1)
+    the_id = neg_recon_km(i,1);
+    the_val = neg_recon_km(i,3);
+    num = 1;
+    if(the_id ~= 0)
+        for j = i + 1:size(neg_recon_km,1)
+            if(neg_recon_km(j,1)==0)
+                continue;
+            elseif(the_id ~= neg_recon_km(j,1))
+                break;
+            elseif(neg_recon_km(i,2)==neg_recon_km(j,2)&&neg_recon_km(i,4)==neg_recon_km(j,4))
+                the_val = the_val*neg_recon_km(j,3);
+                num = num + 1;
+                neg_recon_km(j,1) = 0;
+            end
+        end
+    end
+    the_val = the_val^(1/num);
+    neg_recon_km(i,3) = the_val;
+end
+neg_recon_km(neg_recon_km(:,1)==0,:) = [];
+            
+for i = 1:size(precise_pos_recon_kcat_new,1)
+    the_id = precise_pos_recon_kcat_new(i,1);
+    the_val = precise_pos_recon_kcat_new(i,3);
+    num = 1;
+    if(the_id ~= 0)
+        for j = i + 1:size(precise_pos_recon_kcat_new,1)
+            if(precise_pos_recon_kcat_new(j,1)==0)
+                continue;
+            elseif(the_id ~= precise_pos_recon_kcat_new(j,1))
+                break;
+            elseif(precise_pos_recon_kcat_new(i,2)==precise_pos_recon_kcat_new(j,2)&&precise_pos_recon_kcat_new(i,4)==precise_pos_recon_kcat_new(j,4))
+                the_val = the_val*precise_pos_recon_kcat_new(j,3);
+                num = num + 1;
+                precise_pos_recon_kcat_new(j,1) = 0;
+            end
+        end
+    end
+    the_val = the_val^(1/num);
+    precise_pos_recon_kcat_new(i,3) = the_val;
+end
+precise_pos_recon_kcat_new(precise_pos_recon_kcat_new(:,1)==0,:) = [];
+
+for i = 1:size(precise_neg_recon_kcat_new,1)
+    the_id = precise_neg_recon_kcat_new(i,1);
+    the_val = precise_neg_recon_kcat_new(i,3);
+    num = 1;
+    if(the_id ~= 0)
+        for j = i + 1:size(precise_neg_recon_kcat_new,1)
+            if(precise_neg_recon_kcat_new(j,1)==0)
+                continue;
+            elseif(the_id ~= precise_neg_recon_kcat_new(j,1))
+                break;
+            elseif(precise_neg_recon_kcat_new(i,2)==precise_neg_recon_kcat_new(j,2)&&precise_neg_recon_kcat_new(i,4)==precise_neg_recon_kcat_new(j,4))
+                the_val = the_val*precise_neg_recon_kcat_new(j,3);
+                num = num + 1;
+                precise_neg_recon_kcat_new(j,1) = 0;
+            end
+        end
+    end
+    the_val = the_val^(1/num);
+    precise_neg_recon_kcat_new(i,3) = the_val;
+end
+precise_neg_recon_kcat_new(precise_neg_recon_kcat_new(:,1)==0,:) = [];   
+
+neg_recon_km = neg_recon_km(neg_recon_km(:,4)~=0,:);
+pos_recon_km = pos_recon_km(pos_recon_km(:,4)~=0,:);
+
+%%
+% Integrate km and kcat considering substrates. 
+pos_para_completed = zeros(size(precise_pos_recon_kcat_new));
+neg_para_completed = zeros(size(precise_neg_recon_kcat_new));
+k1 = 1;
+for i = 1:size(pos_para_completed,1)
+    the_rxn = precise_pos_recon_kcat_new(i,1);
+    same_rxn_pos = find(ismember(pos_recon_km(:,1),the_rxn));
+    sub_test = ismember(pos_recon_km(same_rxn_pos,2),precise_pos_recon_kcat_new(i,2));
+    id_test1 = ismember(pos_recon_km(same_rxn_pos,4),precise_pos_recon_kcat_new(i,4));
+    id_test2 = pos_recon_km(same_rxn_pos,4) == 0;
+    id_test = id_test1 + id_test2 > 0;
+    test = find((id_test+sub_test)>1);
+    if(~isempty(test))
+        the_val = precise_pos_recon_kcat_new(i,3)/pos_recon_km(same_rxn_pos(test),3);
+        pos_para_completed(k1,:) = pos_recon_km(same_rxn_pos(test),:);
+        pos_para_completed(k1,3) = the_val;
+        k1 = k1 + 1;
+    end
+end
+pos_para_completed(k1:end,:) = [];
+    
+k1 = 1;
+for i = 1:size(neg_para_completed,1)
+    the_rxn = precise_neg_recon_kcat_new(i,1);
+    same_rxn_pos = find(ismember(neg_recon_km(:,1),the_rxn));
+    sub_test = ismember(neg_recon_km(same_rxn_pos,2),precise_neg_recon_kcat_new(i,2));
+    id_test1 = ismember(neg_recon_km(same_rxn_pos,4),precise_neg_recon_kcat_new(i,4));
+    id_test2 = neg_recon_km(same_rxn_pos,4) == 0;
+    id_test = id_test1 + id_test2 > 0;
+    test = find((id_test+sub_test)>1);
+    if(~isempty(test))
+        the_val = precise_neg_recon_kcat_new(i,3)/neg_recon_km(same_rxn_pos(test),3);
+        neg_para_completed(k1,:) = neg_recon_km(same_rxn_pos(test),:);
+        neg_para_completed(k1,3) = the_val;
+        k1 = k1 + 1;
+    end
+end
+neg_para_completed(k1:end,:) = [];
+
+
+clear i j k num same_rxn_pos the_* *_test test k1 id_*
+%%
+
+load Recon3D_301.mat
+
+% Remove those substrates that can be considered as cofactors. 
+del = {'Nicotinamide Adenine Dinucleotide', 'Nicotinamide Adenine Dinucleotide - Reduced', 'Water', 'Proton',...
+    'Adenosine Triphosphate','Adenosine Diphosphate','Adenosine Monophosphate','Ammonium','Nicotinamide Adenine Dinucleotide Phosphate',...
+    'Orthophosphate','Bicarbonate','Sodium','Carbon Dioxide','Uridine Diphosphate','Orthophosphate','Diphosphate',...
+    'Flavin Adenine Dinucleotide Reduced','Sulfate'};
+recon_sub_name = Recon3D.metNames;
+del_met_pos = find(ismember(recon_sub_name,del));
+pos_para_completed(ismember(pos_para_completed(:,2),del_met_pos),:) = [];
+neg_para_completed(ismember(neg_para_completed(:,2),del_met_pos),:) = [];
+clear del* recon_sub_name
+
+clear precise_* pos_recon* neg_recon*
+%%
+% This is the reaction pair data obtained after comparing with mass spectrometry data, focusing on pairs with significant differences or clear distinctions.  
+load rxn_pair_from_ms.mat
+reaction_pair_full = rxn_pair_from_ms;
+clear rxn_pair_from_ms
+
+% Remove reactions connected to multiple upstream or downstream reactions (>n).  
+reaction_id_list = unique(reaction_pair_full(:));
+reaction_id_times = zeros(size(reaction_id_list));
+for i = 1:length(reaction_id_list)
+    reaction_id_times(i) = sum(reaction_pair_full(:) == reaction_id_list(i));
+end
+multiple_head_id = reaction_id_list(reaction_id_times>15);
+multiple_pos = sum(ismember(reaction_pair_full,multiple_head_id),2)>0;
+reaction_pair_full(multiple_pos,:) = [];
+
+clear multiple*  
+    
+%%
+% Find and keep reactions with kinetic parameters.
+pos_useful_rxn = unique(pos_para_completed(:,1));
+neg_useful_rxn = unique(neg_para_completed(:,1));
+pos_left_pair = zeros(size(reaction_pair_full));
+neg_left_pair = zeros(size(reaction_pair_full));
+
+k1 = 1;
+k2 = 1;
+for i = 1:size(reaction_pair_full,1)
+    if(ismember(reaction_pair_full(i,1),pos_useful_rxn)&&ismember(reaction_pair_full(i,2),pos_useful_rxn))
+        pos_left_pair(k1,:) = reaction_pair_full(i,:);
+        k1 = k1 + 1;
+    elseif(sum(ismember(neg_useful_rxn,reaction_pair_full(i,1)))>0&&sum(ismember(neg_useful_rxn,reaction_pair_full(i,2)))>0)
+        neg_left_pair(k2,:) = [reaction_pair_full(i,2),reaction_pair_full(i,1)];
+        k2 = k2 + 1;
+    end
+end
+
+pos_left_pair(k1:end,:) = [];
+neg_left_pair(k2:end,:) = [];
+
+clear k1 k2 i pos_useful_rxn neg_useful_rxn reaction_pair_full
+
+%%
+% Read the CCLE protein mass spectrometry data, remove the 'bridge' group, combine gene symbols to keep only the required ones, and then normalize (first normalize protein mass, then normalize total expression for each cell line).  
+protein_ms_table = readtable('protein_MS_non_normalized_v1.csv');
+protein_symbol_pre = table2cell(protein_ms_table(:,1));
+protein_ms_pre = table2array(protein_ms_table(:,2:end));
+protein_ms_pre(isnan(protein_ms_pre))=0.0001;
+
+cell_lines_name = protein_ms_table.Properties.VariableNames(2:end);
+bridge = zeros(size(cell_lines_name));
+for i = 1:length(cell_lines_name)
+    if contains(cell_lines_name{i},'bridge')
+        bridge(i) = 1;
+    end
+end
+bridge = bridge == 1;
+
+protein_ms_pre(:,bridge) = []; 
+protein_ms = zeros(size(protein_ms_pre));
+cell_lines_name = cell_lines_name(1,~bridge);
+
+clear bridge
+   
+% There are duplicate gene symbols in CCLE; first sum the values of unmerged gene symbols.  
+for i = 1:length(protein_symbol_pre)
+    if strcmp(protein_symbol_pre{i},'deleted')
+        continue
+    end
+    same_symbol_pos = ismember(protein_symbol_pre,protein_symbol_pre(i));
+    
+    if sum(same_symbol_pos)>1
+        protein_ms(i,:) = sum(protein_ms_pre(same_symbol_pos,:));
+        pos = find(same_symbol_pos);
+        protein_symbol_pre(pos(2:end)) = {'deleted'};
+    else
+        protein_ms(i,:) = protein_ms_pre(same_symbol_pos,:);
+    end
+
+end
+
+deleted_sym = ismember(protein_symbol_pre,'deleted');
+protein_symbol = protein_symbol_pre;
+protein_ms(deleted_sym,:) = [];
+protein_symbol(deleted_sym) = [];
+
+clear pos protein_symbol_pre deleted_sym same_* protein_ms_pre protein_ms_table used_symbol_pos expression_sum 
+%%
+% Obtain the gene symbols corresponding to the parameters using gene IDs.  
+geneID2symbol = table2cell(readtable('gene_symbols2gene_id(by_bioDBnet+SynGO).xlsx'));
+geneID_list = (cell2mat(geneID2symbol(:,2)));
+geneID_list(isnan(geneID_list)) = 0;
+geneSymbol_list = cell(geneID2symbol(:,1));
+[geneID_list,uni_pattern,~] = unique(geneID_list);
+geneSymbol_list =  geneSymbol_list(uni_pattern);
+
+clear tmp geneID2symbol i 
+
+protein_geneID = zeros(size(protein_symbol));
+for i = 1:length(protein_symbol)
+    pos = ismember(geneSymbol_list,protein_symbol(i));
+    if(sum(pos)>0)
+        protein_geneID(i) = geneID_list(pos);
+    end
+end
+
+protein_ms(protein_geneID==0,:) = [];
+protein_symbol(protein_geneID==0,:) = [];
+protein_geneID(protein_geneID==0,:) = [];
+
+
+[~,pos_symbol_pos] = ismember(pos_para_completed(:,4),geneID_list);
+pos_para_completed(pos_symbol_pos==0,:)=[];
+pos_symbol_pos(pos_symbol_pos==0) = [];
+pos_symbol = geneSymbol_list(pos_symbol_pos);
+[~,neg_symbol_pos] = ismember(neg_para_completed(:,4),geneID_list);
+neg_para_completed(neg_symbol_pos==0,:)=[];
+neg_symbol_pos(neg_symbol_pos==0) = [];
+neg_symbol = geneSymbol_list(neg_symbol_pos);
+
+clear neg_symbol_pos pos_symbol_pos 
+%%
+% Organize gene IDs for reaction pairs.  
+recon_geneID = Recon3D.grRules;
+recon_geneID = regexprep(recon_geneID,'\.\d+','');
+recon_geneID = regexprep(recon_geneID,'\(||\)','');
+recon_geneID = regexprep(recon_geneID,' and || or ',' ');
+for i = 1:length(recon_geneID)
+    recon_geneID(i) = {split(recon_geneID(i))};
+end
+pos_pair_gene_id = recon_geneID(pos_left_pair);
+neg_pair_gene_id = recon_geneID(neg_left_pair);
+
+% Replace reaction IDs with gene symbols and organize corresponding protein masses and kinetic parameters.  
+pos_pair_symbol = cell(size(pos_left_pair));
+neg_pair_symbol = cell(size(neg_left_pair));
+pos_pair_para = cell(size(pos_left_pair));
+neg_pair_para = cell(size(neg_left_pair));
+
+non_pos = zeros(size(pos_left_pair,1),1);
+for i = 1:size(pos_pair_symbol)
+    the_id = pos_pair_gene_id{i,1};
+    the_symbol = [];
+    for j = 1:length(the_id)
+        pos = geneID_list==str2double(the_id(j));
+        if(sum(pos)==1)
+            the_symbol = [the_symbol,geneSymbol_list(pos)];
+        end
+    end
+    pos_pair_symbol(i,1) = {unique(the_symbol)};
+    if(isempty(the_symbol))
+        non_pos(i) = 1;
+    end
+    
+    the_id = pos_pair_gene_id{i,2};
+    the_symbol = [];
+    for j = 1:length(the_id)
+        pos = geneID_list==str2double(the_id(j));
+        if(sum(pos)==1)
+            the_symbol = [the_symbol,geneSymbol_list(pos)];
+        end
+    end
+    pos_pair_symbol(i,2) = {unique(the_symbol)};
+    if(isempty(the_symbol))
+        non_pos(i) = 1;
+    end
+    
+end
+non_pos = non_pos == 1;
+pos_pair_gene_id(non_pos,:) = [];
+pos_left_pair(non_pos,:) = [];
+pos_pair_para(non_pos,:) = [];
+pos_pair_symbol(non_pos,:) = [];
+
+non_pos = zeros(size(neg_left_pair,1),1);
+for i = 1:size(neg_pair_symbol)
+    the_id = neg_pair_gene_id{i,1};
+    the_symbol = [];
+    for j = 1:length(the_id)
+        pos = geneID_list==str2double(the_id(j));
+        if(sum(pos)==1)
+            the_symbol = [the_symbol,geneSymbol_list(pos)];
+        end
+    end
+    neg_pair_symbol(i,1) = {unique(the_symbol)};
+    if(isempty(the_symbol))
+        non_pos(i) = 1;
+    end
+    
+    the_id = neg_pair_gene_id{i,2};
+    the_symbol = [];
+    for j = 1:length(the_id)
+        pos = geneID_list==str2double(the_id(j));
+        if(sum(pos)==1)
+            the_symbol = [the_symbol,geneSymbol_list(pos)];
+        end
+    end
+    neg_pair_symbol(i,2) = {unique(the_symbol)};
+    if(isempty(the_symbol))
+        non_pos(i) = 1;
+    end
+    
+end
+non_pos = non_pos == 1;
+neg_pair_gene_id(non_pos,:) = [];
+neg_left_pair(non_pos,:) = [];
+neg_pair_para(non_pos,:) = [];
+neg_pair_symbol(non_pos,:) = [];
+
+
+clear non_pos the_symbol the_id pos_pair_gene_id neg_pair_gene_id
+%%
+% Convert parameters into a format corresponding to reaction pairs using reaction IDs and gene symbols.  
+miss_pos = zeros(size(pos_pair_para,1),1);
+for i = 1:size(pos_pair_para,1)
+    rxn_test = find(pos_para_completed(:,1) == pos_left_pair(i,1));
+    the_para = zeros(size(pos_pair_symbol{i,1}));
+    non_pos = zeros(size(pos_pair_symbol{i,1}));
+    for j = 1:length(pos_pair_symbol{i,1})
+        symbol_test = find(ismember(pos_symbol,pos_pair_symbol{i,1}(j)));
+        pos = intersect(rxn_test,symbol_test);
+        if(~isempty(pos))
+            the_para(j) = geomean(pos_para_completed(pos,3));
+        else
+            non_pos(j) = 1;
+        end
+    end
+    non_pos = non_pos == 1;
+    the_para(non_pos) = [];
+    pos_pair_symbol{i,1}(non_pos) = [];
+    pos_pair_para(i,1) = {the_para};
+   
+    
+    if(sum(non_pos)>0)
+        miss_pos(i) = 1;
+    end
+    
+    
+    non_pos = zeros(size(pos_pair_symbol{i,2}));
+    rxn_test = find(pos_para_completed(:,1) == pos_left_pair(i,2));
+    the_para = zeros(size(pos_pair_symbol{i,2}));
+    for j = 1:length(pos_pair_symbol{i,2})
+        symbol_test = find(ismember(pos_symbol,pos_pair_symbol{i,2}(j)));
+        pos = intersect(rxn_test,symbol_test);
+        if(~isempty(pos))
+            the_para(j) = geomean(pos_para_completed(pos,3));
+        else
+            non_pos(j) = 1;
+        end
+    end
+    non_pos = non_pos == 1;
+    the_para(non_pos) = [];
+    pos_pair_symbol{i,2}(non_pos) = [];
+    pos_pair_para(i,2) = {the_para};
+    
+    if(sum(non_pos)>0)
+        miss_pos(i) = 1;
+    end
+    
+end
+miss_pos = miss_pos == 1;
+
+for i = 1:size(neg_pair_para,1)
+    rxn_test = find(neg_para_completed(:,1) == neg_left_pair(i,1));
+    the_para = zeros(size(neg_pair_symbol{i,1}));
+    non_pos = zeros(size(neg_pair_symbol{i,1}));
+    for j = 1:length(neg_pair_symbol{i,1})
+        symbol_test = find(ismember(neg_symbol,neg_pair_symbol{i,1}(j)));
+        pos = intersect(rxn_test,symbol_test);
+        if(~isempty(pos))
+            the_para(j) = geomean(neg_para_completed(pos,3));
+        else
+            non_pos(j) = 1;
+        end
+    end
+    non_pos = non_pos == 1;
+    the_para(non_pos) = [];
+    neg_pair_symbol{i,1}(non_pos) = [];
+    neg_pair_para(i,1) = {the_para};
+    
+    non_pos = zeros(size(neg_pair_symbol{i,2}));
+    rxn_test = find(neg_para_completed(:,1) == neg_left_pair(i,2));
+    the_para = zeros(size(neg_pair_symbol{i,2}));
+    for j = 1:length(neg_pair_symbol{i,2})
+        symbol_test = find(ismember(neg_symbol,neg_pair_symbol{i,2}(j)));
+        pos = intersect(rxn_test,symbol_test);
+        if(~isempty(pos))
+            the_para(j) = geomean(neg_para_completed(pos,3));
+        else
+            non_pos(j) = 1;
+        end
+    end
+    non_pos = non_pos == 1;
+    the_para(non_pos) = [];
+    neg_pair_symbol{i,2}(non_pos) = [];
+    neg_pair_para(i,2) = {the_para};
+
+end
+
+
+clear the_*  *_pos pos *_test 
+        
+% Remove reaction pairs with the same gene symbol on both upstream and downstream.  
+repeat_pos = zeros(size(pos_left_pair,1),1);
+for i = 1:size(pos_left_pair,1)
+    if(isequal(pos_pair_symbol(i,1),pos_pair_symbol(i,2)))
+        repeat_pos(i) = 1;
+    end
+end
+repeat_pos = repeat_pos == 1;
+pos_pair_para(repeat_pos,:) = [];
+pos_left_pair(repeat_pos,:) = [];
+pos_pair_symbol(repeat_pos,:) = [];
+
+repeat_pos = zeros(size(neg_left_pair,1),1);
+for i = 1:size(neg_left_pair,1)
+    if(isequal(neg_pair_symbol(i,1),neg_pair_symbol(i,2)))
+        repeat_pos(i) = 1;
+    end
+end
+repeat_pos = repeat_pos == 1;
+neg_pair_para(repeat_pos,:) = [];
+neg_left_pair(repeat_pos,:) = [];
+neg_pair_symbol(repeat_pos,:) = [];
+
+
+%clear pos neg_symbol pos_symbol non_pos repeat_pos
+%%
+% Calculate the geometric mean of the weights for same gene IDs.  
+geneID2weight = readtable('(all_ccle)gene_id&uniprot_id&protein_weight.txt');
+geneID = table2array(geneID2weight(:,1));
+weight = table2array(geneID2weight(:,5));
+
+unique_geneID = unique(geneID);
+mean_weight = zeros(size(unique_geneID));
+for i = 1:size(unique_geneID,1)
+    pos = geneID==unique_geneID(i);
+    mean_weight(i) = geomean(weight(pos));
+end
+
+geneID2weight = [unique_geneID,mean_weight];
+
+clear pos i unique_geneID mean_weight geneID weight
+
+
+%normalize ms table
+[~,pos] = ismember(protein_geneID,geneID2weight(:,1));
+protein_ms(pos==0,:) = [];
+protein_geneID(pos==0,:) = [];
+protein_symbol(pos==0,:) = [];
+pos(pos==0) = [];
+protein_ms = protein_ms./geneID2weight(pos,2);
+
+clear pos geneID2weight 
+
+
+%%
+%use a permutated mass spectrometry data to compare
+permutated_ms = reshape(protein_ms(randperm(numel(protein_ms))), size(protein_ms));
+
+%%
+% Read the deltaG data and organize it into the format corresponding to reaction pairs.  
+reaction_DeltaG = table2array(readtable('new_DeltaG.xlsx'));
+
+pos_pair_DeltaG = zeros(size(pos_left_pair));
+for i = 1:size(pos_left_pair,2)
+    pos_pair_DeltaG(:,i) = reaction_DeltaG(pos_left_pair(:,i));
+end
+neg_pair_DeltaG = zeros(size(neg_left_pair));
+for i = 1:size(neg_left_pair,2)
+    neg_pair_DeltaG(:,i) = reaction_DeltaG(neg_left_pair(:,i));
+end
+neg_pair_DeltaG = -1*neg_pair_DeltaG;
+
+pos_pair_K = exp(pos_pair_DeltaG./(-1*298.15*8.314/1000));
+neg_pair_K = exp(neg_pair_DeltaG./(-1*298.15*8.314/1000));
+clear *_DeltaG 
+% clear *_para_completed 
+
+%%
+% Organize the mass spectrometry data into the format corresponding to reaction pairs.  
+neg_pair_k_rxn1 = zeros(size(neg_left_pair,1),size(protein_ms,2));
+neg_pair_k_rxn2 = zeros(size(neg_left_pair,1),size(protein_ms,2));
+pos_pair_k_rxn1 = zeros(size(pos_left_pair,1),size(protein_ms,2));
+pos_pair_k_rxn2 = zeros(size(pos_left_pair,1),size(protein_ms,2));
+permutated_pair_k_rxn1 = zeros(size(pos_left_pair,1),size(protein_ms,2));
+permutated_pair_k_rxn2 = zeros(size(pos_left_pair,1),size(protein_ms,2));
+
+for i = 1:size(pos_pair_k_rxn1,1)
+    the_symbol = pos_pair_symbol{i,1};
+    the_k = zeros(1,size(protein_ms,2));
+    permutated_k = zeros(1,size(protein_ms,2));
+    for j = 1:length(the_symbol)
+        pos = ismember(protein_symbol,the_symbol(j));
+        if(sum(pos)>0)
+            the_k = the_k + protein_ms(pos,:).*pos_pair_para{i,1}(j);
+            permutated_k = permutated_k + permutated_ms(pos,:).*pos_pair_para{i,1}(j);
+        end
+    end
+    pos_pair_k_rxn1(i,:) = the_k;
+    permutated_pair_k_rxn1(i,:) = permutated_k;
+end
+
+for i = 1:size(pos_pair_k_rxn2,1)
+    the_symbol = pos_pair_symbol{i,2};
+    the_k = zeros(1,size(protein_ms,2));
+    permutated_k = zeros(1,size(protein_ms,2));
+    for j = 1:length(the_symbol)
+        pos = ismember(protein_symbol,the_symbol(j));
+        if(sum(pos)>0)
+            the_k = the_k + protein_ms(pos,:).*pos_pair_para{i,2}(j);
+            permutated_k = permutated_k + permutated_ms(pos,:).*pos_pair_para{i,2}(j);
+        end
+    end
+    pos_pair_k_rxn2(i,:) = the_k;
+    permutated_pair_k_rxn2(i,:) = permutated_k;
+end
+
+for i = 1:size(neg_pair_k_rxn1,1)
+    the_symbol = neg_pair_symbol{i,1};
+    the_k = zeros(1,size(protein_ms,2));
+    
+    for j = 1:length(the_symbol)
+        pos = ismember(protein_symbol,the_symbol(j));
+        if(sum(pos)>0)
+            the_k = the_k + protein_ms(pos,:).*neg_pair_para{i,1}(j);
+        end
+    end
+    neg_pair_k_rxn1(i,:) = the_k;
+end
+
+for i = 1:size(neg_pair_k_rxn2,1)
+    the_symbol = neg_pair_symbol{i,2};
+    the_k = zeros(1,size(protein_ms,2));
+    
+    for j = 1:length(the_symbol)
+        pos = ismember(protein_symbol,the_symbol(j));
+        if(sum(pos)>0)
+            the_k = the_k + protein_ms(pos,:).*neg_pair_para{i,2}(j);
+        end
+    end
+    neg_pair_k_rxn2(i,:) = the_k;
+end
+
+clear the_* pos
+%%
+% Remove reaction pairs that do not have corresponding mass spectrometry data.  
+empty_pos = ((pos_pair_k_rxn1(:,1) == 0)+(pos_pair_k_rxn2(:,1) == 0))>0;
+pos_left_pair(empty_pos,:) = [];
+pos_pair_K(empty_pos,:) = [];
+pos_pair_k_rxn1(empty_pos,:) = [];
+pos_pair_k_rxn2(empty_pos,:) = [];
+permutated_pair_k_rxn1(empty_pos,:) = [];
+permutated_pair_k_rxn2(empty_pos,:) = [];
+pos_pair_para(empty_pos,:) = [];
+pos_pair_symbol(empty_pos,:) = [];
+
+
+empty_pos = ((neg_pair_k_rxn1(:,1) == 0)+(neg_pair_k_rxn2(:,1) == 0))>0;
+neg_left_pair(empty_pos,:) = [];
+neg_pair_K(empty_pos,:) = [];
+neg_pair_k_rxn1(empty_pos,:) = [];
+neg_pair_k_rxn2(empty_pos,:) = [];
+neg_pair_para(empty_pos,:) = [];
+neg_pair_symbol(empty_pos,:) = [];
+
+
+% Remove pairs without corresponding Delta G values.
+nan_pos = isnan(pos_pair_K(:,1));
+pos_left_pair(nan_pos,:) = [];
+pos_pair_K(nan_pos,:) = [];
+pos_pair_k_rxn1(nan_pos,:) = [];
+pos_pair_k_rxn2(nan_pos,:) = [];
+permutated_pair_k_rxn1(nan_pos,:) = [];
+permutated_pair_k_rxn2(nan_pos,:) = [];
+pos_pair_para(nan_pos,:) = [];
+pos_pair_symbol(nan_pos,:) = [];
+
+
+nan_pos = isnan(neg_pair_K(:,2));
+neg_left_pair(nan_pos,:) = [];
+neg_pair_K(nan_pos,:) = [];
+neg_pair_k_rxn1(nan_pos,:) = [];
+neg_pair_k_rxn2(nan_pos,:) = [];
+neg_pair_para(nan_pos,:) = [];
+neg_pair_symbol(nan_pos,:) = [];
+
+
+clear pos the_symbol empty_pos nan_pos
+clear protein_*
+%%
+% Here, the apparent rate constants are obtained.
+pos_apparent_k_rxn1 = pos_pair_k_rxn1;
+pos_apparent_k_rxn2 = pos_pair_k_rxn2;
+permutated_apparent_k_rxn1 = permutated_pair_k_rxn1;
+permutated_apparent_k_rxn2 = permutated_pair_k_rxn2;
+neg_apparent_k_rxn1 = neg_pair_k_rxn1;
+neg_apparent_k_rxn2 = neg_pair_k_rxn2;
+
+neg_standard_K = neg_pair_K(:,2);
+pos_standard_K = pos_pair_K(:,1);
+
+% Calculate the theoretical equilibrium constants for maximum flux. 
+pos_estimated_K = zeros(size(pos_apparent_k_rxn1));
+permutated_estimated_K = zeros(size(permutated_pair_k_rxn1));
+neg_estimated_K = zeros(size(neg_apparent_k_rxn1));
+
+for i = 1:size(pos_estimated_K,1)
+    pos_estimated_K(i,:) = (pos_apparent_k_rxn1(i,:).^2)./(pos_apparent_k_rxn2(i,:).^2);
+end
+
+for i = 1:size(permutated_estimated_K,1)
+    permutated_estimated_K(i,:) = (permutated_apparent_k_rxn1(i,:).^2)./(permutated_apparent_k_rxn2(i,:).^2);
+end
+
+for i = 1:size(neg_estimated_K,1)
+    neg_estimated_K(i,:) = (pos_apparent_k_rxn2(i,:).^2)./(pos_apparent_k_rxn1(i,:).^2);
+end
+
+clear pos_apparent_k_rxn* neg_apparent_k_rxn*
+
+%%
+% Calculate the Spearman correlation coefficients for the reaction pairs.  
+pos_spearman = zeros(size(pos_estimated_K,2),1);
+for i = 1:length(pos_spearman)
+    no_nan_pos = ~isnan(pos_estimated_K(:,i));
+    no_inf_pos = ~isinf(pos_estimated_K(:,i));
+    useful_pos = no_nan_pos + no_inf_pos == 2;
+    if(sum(useful_pos) > 50)
+        pos_spearman(i) = corr(pos_estimated_K(useful_pos,i),pos_standard_K(useful_pos),'type','Spearman');
+    end
+end
+
+permutated_spearman = zeros(size(permutated_estimated_K,2),1);
+for i = 1:length(permutated_spearman)
+    no_nan_pos = ~isnan(permutated_estimated_K(:,i));
+    no_inf_pos = ~isinf(permutated_estimated_K(:,i));
+    useful_pos = no_nan_pos + no_inf_pos == 2;
+    if(sum(useful_pos) > 50)
+        permutated_spearman(i) = corr(permutated_estimated_K(useful_pos,i),pos_standard_K(useful_pos),'type','Spearman');
+    end
+end
+
+
+
+%%
+% Plot the distribution of the Spearman correlation coefficients between the theoretical equilibrium constants and the equilibrium constants derived from Gibbs free energy, while comparing with the permuted group.
+clear neg_* no_* pos_psir* pos_left*
+
+min_spearman = min([pos_spearman;permutated_spearman]);
+max_spearman = max([pos_spearman;permutated_spearman]);
+figure('Position', [400, 30, 900, 750]);
+h1 = histogram(permutated_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[191 191 191]/255,'EdgeColor',[166 166 166]/255,'FaceAlpha',0.25);
+
+hold on
+h2 = histogram(pos_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[218 227 243]/255,'EdgeColor',[68 114 196]/255,'FaceAlpha',1);
+xlim([min_spearman-0.05 max_spearman+0.05])
+
+lgd = legend([h1 h2],{'permutated data','original data'},'Location','northwest');
+    
+[p,h] = ranksum(pos_spearman,permutated_spearman)
+text(min_spearman-0.03,max([h1.Values,h2.Values])*0.8,sprintf('Wilcoxon rank sum test \n p < 10^{-13}'),'FontSize',20)
+
+
+title(sprintf('Correlation between k_i^2/k_{i+1}^2 and K_i \n of reaction pairs on genome scale'));
+xlabel('Spearman correlation coefficient');
+ylabel('Cell line number');
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+hold off
+
