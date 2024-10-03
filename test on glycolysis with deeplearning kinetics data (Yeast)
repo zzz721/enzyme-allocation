@@ -1,0 +1,118 @@
+%ms2:Label-free Quantification of Host-Cell Protein Impurity in a Recombinant Hemoglobin Reference Material
+%Validation was conducted on the glycolytic pathway in yeast cells
+%plot a scatter plot
+
+load yeast-GEM.mat
+load ms_data_2_MStable.mat
+load ms_data_2_SGD.mat
+glycolysis_km = [{[1.98156,1.64748]},{[4.48190]},{[0.88449,0.03436]},{[0.01456]},...
+    {[0.0581,0.32198,1.51046]},{[0.07922]},{[0.03403]},{[0.12597,0.27191]},{[0.02957,0.05898]}];
+glycolysis_kcat = [{[12.1153,31.2071]},{[4.1911]},{[19.5533,15.4038]},{[1.4882]}...
+    {[91.0772,236.2808,72.4131]},{[78.898]},{[32.6239]},{[86.6954,87.8468]},{[31.7335,35.2948]}];
+
+glycolysis_symbol = [{{'YFR053C','YGL253W'}};{{'YBR196C'}};{{'YGR240C','YMR205C'}};{{'YKL060C'}};...
+    {{'YJL052W','YJR009C','YGR192C'}};{{'YCR012W'}};{{'YKL152C'}};...
+    {{'YGR254W','YHR174W'}};{{'YAL038W','YOR347C'}}];
+%%
+permutated_ms_2 = reshape(ms_2_ms_data(randperm(numel(ms_2_ms_data))), size(ms_2_ms_data));
+%%
+glycolysis_mass_table = readtable('yeast_glycolysis_mass.txt');
+mass_SGD = table2cell(glycolysis_mass_table(:,1));
+mass_mass = table2array(glycolysis_mass_table(:,7));
+
+repeat_pos = zeros(size(mass_SGD));
+for i = 1:length(mass_SGD)
+    if(~ismember('a',mass_SGD(i)))
+        pos = find(ismember(mass_SGD,mass_SGD(i)));
+        if(length(pos)>1)
+            mass_SGD(pos(2:end)) = {'a'};
+            repeat_pos(pos(2:end)) = 1;
+        end
+    end
+end
+repeat_pos = repeat_pos == 1;
+mass_SGD(repeat_pos) = [];
+mass_mass(repeat_pos) = [];
+
+clear glycolysis_mass_table repeat_pos pos 
+%%
+glycolysis_k_ms_2 = zeros(length(glycolysis_symbol),size(ms_2_ms_data,2));
+glycolysis_k_ms_2_permuatated = zeros(length(glycolysis_symbol),size(ms_2_ms_data,2));
+for i = 1:length(glycolysis_symbol)-1
+    the_enzymes = glycolysis_symbol{i};
+    the_km = glycolysis_km{i};
+    the_kcat = glycolysis_kcat{i};
+    the_val_2 = zeros(1,size(ms_2_ms_data,2));
+    the_val_2_permutated = zeros(1,size(ms_2_ms_data,2));
+
+    for j = 1:length(the_enzymes)
+        the_val_2 = the_val_2 + ms_2_ms_data(ismember(ms_2_SGD,the_enzymes(j)),:).*(the_kcat(j)/the_km(j))/(mass_mass(ismember(mass_SGD,the_enzymes(j))));
+        the_val_2_permutated = the_val_2_permutated + permutated_ms_2(ismember(ms_2_SGD,the_enzymes(j)),:).*(the_kcat(j)/the_km(j))/(mass_mass(ismember(mass_SGD,the_enzymes(j))));
+
+    end
+    if(~isempty(the_val_2))
+        glycolysis_k_ms_2(i,:) = the_val_2;
+    end
+    
+    if(~isempty(the_val_2_permutated))
+        glycolysis_k_ms_2_permuatated(i,:) = the_val_2_permutated;
+    end
+    
+    
+end
+
+
+clear pos *_pos cell_type  the_*
+%%
+glycolysis_DeltaG = [-16.7,1.7,-14.2,23.9,6.3,-18.8,4.4,-3.2,-31.4];
+glycolysis_K = exp(-1*(1000*glycolysis_DeltaG)./(298.15*8.314));
+
+estimated_K_2 = zeros(size(glycolysis_k_ms_2,1)-1,size(glycolysis_k_ms_2,2));
+for i = 1:size(glycolysis_k_ms_2,1)-1
+    estimated_K_2(i,:) = (glycolysis_k_ms_2(i,:).^2)./glycolysis_k_ms_2(i+1,:).^2;
+end
+
+estimated_K_2_permutated = zeros(size(glycolysis_k_ms_2_permuatated,1)-1,size(glycolysis_k_ms_2_permuatated,2));
+for i = 1:size(glycolysis_k_ms_2_permuatated,1)-1
+    estimated_K_2_permutated(i,:) = (glycolysis_k_ms_2_permuatated(i,:).^2)./glycolysis_k_ms_2_permuatated(i+1,:).^2;
+end
+    
+
+
+%%
+glycolysis_spearman_2 = zeros(size(estimated_K_2,2),1);
+for i = 1:length(glycolysis_spearman_2)
+    glycolysis_spearman_2(i) = corr(estimated_K_2(1:7,i),glycolysis_K(1:7)','type','Spearman');
+end
+
+glycolysis_spearman_2_permutated = zeros(size(estimated_K_2_permutated,2),1);
+for i = 1:length(glycolysis_spearman_2_permutated)
+    glycolysis_spearman_2_permutated(i) = corr(estimated_K_2_permutated(1:7,i),glycolysis_K(1:7)','type','Spearman');
+end
+
+
+
+%%
+glycolysis_reaction_name = [{'Glc->G6P->F6P'},{'G6P->F6P->FBP'},{'F6P->FBP->DHAP+GAP'},{'FBP->2GAP->2BPG'},{'GAP->BPG->3PG'},{'BPG->3PG->2PG'},{'3PG->2PG->PEP'},{'2PG->PEP->Pyr'}]; 
+load('Mycolormap1.mat');
+%%
+color_for_2 = [1,9,17,24,31,39,47,55,63,71,79,87,95,103,111];
+color_for_2 = (mycolorbar_1(color_for_2,:));
+figure('Position', [400, 30, 900, 750]);
+estimated_K_2_8 = estimated_K_2(1:7,:);
+for i = 1:size(estimated_K_2_8,2)
+    scatter(log(estimated_K_2_8(:,i)),log((glycolysis_K(1:7)))',200,'MarkerFaceColor',color_for_2(i,:),'MarkerEdgeColor',color_for_2(i,:));
+    hold on
+end
+box on
+xlim([min(log(estimated_K_2_8(:)))-4,max(log(estimated_K_2_8(:)))+4]);
+ylim([min(log(glycolysis_K(1:7)))-2,max(log(glycolysis_K(1:7)))+2]);
+xlabel(sprintf('log(k_i^2/k_{i+1}^2)'));
+ylabel(sprintf('log(K_i) of upstream reaction'));
+title('Yeast data set 2');
+for i = 1:size(estimated_K_2_8,1) 
+    text(mean(log(estimated_K_2_8(i,:))),log(glycolysis_K(i)) ,glycolysis_reaction_name{i}, 'VerticalAlignment', 'middle', 'HorizontalAlignment', 'center','FontSize', 20);  
+end
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+hold off
+
