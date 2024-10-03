@@ -1,0 +1,314 @@
+Sin=100.^normrnd(1,1,1,1);
+Sout=100.^normrnd(1,1,1,1);
+%%
+protein_ms_table = readtable('protein_MS_non_normalized_v1.csv');
+protein_symbol_pre = table2cell(protein_ms_table(:,1));
+protein_ms_pre = table2array(protein_ms_table(:,2:end));
+protein_ms_pre(isnan(protein_ms_pre))=0.0001;
+
+cell_lines_name = protein_ms_table.Properties.VariableNames(2:end);
+bridge = zeros(size(cell_lines_name));
+for i = 1:length(cell_lines_name)
+    if contains(cell_lines_name{i},'bridge')
+        bridge(i) = 1;
+    end
+end
+bridge = bridge == 1;
+
+protein_ms_pre(:,bridge) = []; 
+protein_ms = zeros(size(protein_ms_pre));
+cell_lines_name = cell_lines_name(1,~bridge);
+
+clear bridge
+   
+%ccle中有重复的gene symbol，先将未合并的gene symbol加起来了
+for i = 1:length(protein_symbol_pre)
+    if strcmp(protein_symbol_pre{i},'deleted')
+        continue
+    end
+    same_symbol_pos = ismember(protein_symbol_pre,protein_symbol_pre(i));
+    
+    if sum(same_symbol_pos)>1
+        protein_ms(i,:) = sum(protein_ms_pre(same_symbol_pos,:));
+        pos = find(same_symbol_pos);
+        protein_symbol_pre(pos(2:end)) = {'deleted'};
+    else
+        protein_ms(i,:) = protein_ms_pre(same_symbol_pos,:);
+    end
+
+end
+
+deleted_sym = ismember(protein_symbol_pre,'deleted');
+protein_symbol = protein_symbol_pre;
+protein_ms(deleted_sym,:) = [];
+protein_symbol(deleted_sym) = [];
+
+clear pos protein_symbol_pre deleted_sym same_* protein_ms_pre protein_ms_table used_symbol_pos expression_sum 
+%%
+
+glycolysis_km = [{[0.11266,0.07636,0.09738,2.27190]},{[0.14276]},{[0.63713,0.18462,0.39181]},{[0.15178,0.01888,0.02963]},...
+    {[0.30868]},{[0.52958]},{[0.02558,0.06790]},{[0.16316,0.07849]},{[0.08089,0.18109,0.57327]},{[0.54278,0.04653]}];
+glycolysis_kcat = [{[5.2935,5.2935,2.1311,16.4621]},{[66.9867]},{[9.6736,6.8316,18.5202]},{[1.7248,0.2444,8.63822]}...
+    {[485.2629]},{[9.1578]},{[69.1423,13.8187]},{[34.0914,25.8809]},{[10.0788,105.2464,58.0222]},{[118.6542,141.2942]}];
+
+%%
+glycolysis_symbol = [{{'HK1','HK2','HK3'}};{{'GPI'}};{{'PFKM','PFKL','PFKP'}};{{'ALDOA','ALDOB','ALDOC'}};...
+    {{'TPI1'}};{{'GAPDH'}};{{'PGK1','PGK2'}};{{'PGAM1','PGAM2'}};{{'ENO1','ENO2','ENO3'}};{{'PKM','PKLR'}}];
+
+protein_apparent_k = zeros(length(glycolysis_symbol),size(protein_ms,2));
+
+for i = 1:length(glycolysis_symbol)
+    the_enzymes = glycolysis_symbol{i};
+    the_km = glycolysis_km{i};
+    the_kcat = glycolysis_kcat{i};
+    the_val = zeros(1,size(protein_ms,2));
+    for j = 1:length(the_enzymes)
+        the_val = the_val + protein_ms(ismember(protein_symbol,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
+    end
+    protein_apparent_k(i,:) = the_val;
+end
+
+
+clear pos *_pos cell_type  the_* glycolysis* protein_ms protein_symbol
+
+%%
+glycolysis_DeltaG = [-16.7,1.7,-14.2,23.9,7.6,6.3,-18.8,4.4,-3.2,-31.4];
+glycolysis_K = exp(-1*(1000*glycolysis_DeltaG)./(298.15*8.314));
+clear glycolysis_DeltaG
+%%
+nrxn = size(protein_apparent_k,1);
+nsamples = size(protein_apparent_k,2);
+
+fcc_group_glycolysis = zeros(nrxn,nsamples);
+
+S_group_glycolysis = zeros(nrxn+1,nsamples);
+Cond_group_glycolysis = zeros(nsamples,1);
+var_group_glycolysis = zeros(nsamples,1);
+gini_group_glycolysis = zeros(nsamples,1);
+flux_group_glycolysis = zeros(nsamples,1);
+unabs_flux_group_glycolysis = zeros(nsamples,1);
+extreme_group_glycolysis = zeros(nsamples,1);
+wrong_group_glycolysis = zeros(nsamples,1);
+x_group = zeros(nrxn,nsamples);
+wrong = zeros(nsamples,1);
+
+min_val_of_fcc = ones(nsamples,1);
+S_glycolysis = [];
+for j=1:size(protein_apparent_k,2)
+    
+    kSample_random_sum = sum(protein_apparent_k(:,j));
+    protein_apparent_k(:,j) = protein_apparent_k(:,j)/kSample_random_sum;
+    
+    K = glycolysis_K;
+    k = protein_apparent_k(:,j);
+    %{
+    start_x = [1,1,1,1,1,1,1,1,1,1];
+    x_real = fsolve(@(start_x)fun_zero(start_x,K,k,Sin,Sout),start_x);
+    x_group(:,j) = x_real;
+    S = zeros(11,1);
+    S(1) = Sin;
+    S(11) = Sout;
+    for i =2:10
+        S(i) = S(i-1)*x_real(i-1);
+    end
+    %}
+    
+    nmet=nrxn+1;
+    M=zeros(nmet,nmet);
+    M(1,1)=1;
+    M(end,end)=1;
+    for i=1:nrxn-1
+        M(i+1,i)=k(i);
+        M(i+1,i+2)=k(i+1)/K(i+1);
+        M(i+1,i+1)=-(k(i)/K(i)+k(i+1));
+    end
+    b=zeros(nmet,1);
+    b(1)=Sin;
+    b(end)=Sout;
+    S=M\b;
+    f=(k(1)*S(1)-k(1)*S(2)/K(1));
+    flux=(f);
+    
+    fcc = zeros(nrxn,1);
+    for i=1:nrxn
+        fcc(i)=(S(i)*K(i)-S(i+1))/prod(K(1:i));
+    end
+    fcc=fcc/sum(fcc);
+    Q=S(2:end)./S(1:end-1);
+    dg=log(Q./K);
+    
+    S_glycolysis = [S_glycolysis,S];
+    
+  
+
+    
+    fcc_group_glycolysis(:,j) = fcc;
+    S_group_glycolysis(:,j) = S;
+    var_group_glycolysis(j) = var(fcc);
+    gini_group_glycolysis(j) = GiniIndex(fcc);
+    flux_group_glycolysis(j) = flux;
+    min_val_of_fcc(j) = min(fcc);
+    
+    if min(S) < 0
+        wrong_group_glycolysis(j) = 1;
+    end
+    
+    
+end
+
+
+extreme_glycolysis = extreme_group_glycolysis >0;
+extreme_cond_group_glycolysis = Cond_group_glycolysis(extreme_glycolysis);
+
+wrong_glycolysis = wrong_group_glycolysis >0;
+
+var_group_glycolysis(extreme_glycolysis) = -1;
+var_group_glycolysis(wrong_glycolysis) = -1;
+delete = var_group_glycolysis == -1;
+
+fcc_group_glycolysis(:,delete) = [];
+Cond_group_glycolysis(delete) = [];
+var_group_glycolysis(delete) = [];
+flux_group_glycolysis(delete) = [];
+gini_group_glycolysis(delete) = [];
+min_val_of_fcc(delete) = [];
+
+delete = min_val_of_fcc <= 0;
+
+fcc_group_glycolysis(:,delete) = [];
+Cond_group_glycolysis(delete) = [];
+var_group_glycolysis(delete) = [];
+flux_group_glycolysis(delete) = [];
+gini_group_glycolysis(delete) = [];
+min_val_of_fcc(delete) = [];
+
+sum_wrong= sum(wrong_glycolysis);
+sum_extreme = sum(extreme_group_glycolysis);
+
+max_var = max(var_group_glycolysis);
+max_flux = max(flux_group_glycolysis);
+
+%%
+nrxn=10;
+nsamples=40000;
+KSample=repmat(glycolysis_K',1,nsamples);
+kSample_random=10.^normrnd(0,0.5,nrxn,nsamples);
+
+
+%%
+fcc_group_random = zeros(nrxn,nsamples);
+S_group_random = zeros(nrxn+1,nsamples);
+Cond_group_random = zeros(nsamples,1);
+var_group_random = zeros(nsamples,1);
+gini_group_random = zeros(nsamples,1);
+flux_group_random = zeros(nsamples,1);
+unabs_flux_group_random = zeros(nsamples,1);
+extreme_group_random = zeros(nsamples,1);
+wrong_group_random = zeros(nsamples,1);
+negative_random_double = zeros(nsamples,1);
+
+for j=1:nsamples
+    
+    kSample_random_sum = sum(kSample_random(:,j));
+    for i=1:nrxn
+        kSample_random(i,j) = kSample_random(i,j)/kSample_random_sum;
+    end
+    
+    K = KSample(:,j);
+    k = kSample_random(:,j);
+    
+    nmet=nrxn+1;
+    M=zeros(nmet,nmet);
+    M(1,1)=1;
+    M(end,end)=1;
+    for i=1:nrxn-1
+        M(i+1,i)=k(i);
+        M(i+1,i+2)=k(i+1)/K(i+1);
+        M(i+1,i+1)=-(k(i)/K(i)+k(i+1));
+    end
+    b=zeros(nmet,1);
+    b(1)=Sin;
+    b(end)=Sout;
+    S=M\b;
+    f=(k(1)*S(1)-k(1)*S(2)/K(1));
+    flux=(f);
+    
+    fcc = zeros(nrxn,1);
+    for i=1:nrxn
+        fcc(i)=(S(i)*K(i)-S(i+1))/prod(K(1:i));
+    end
+    fcc=fcc/sum(fcc);
+    Q=S(2:end)./S(1:end-1);
+    dg=log(Q./K);
+    
+    Cond_group_random(j) = cond(M);
+    fcc_group_random(:,j) = fcc;
+    S_group_random(:,j) = S;
+    var_group_random(j) = var(fcc);
+    gini_group_random(j) = GiniIndex(fcc);
+    flux_group_random(j) = flux;
+    unabs_flux_group_random(j) = f;
+    
+    if min(S) < 0
+        wrong_group_random(j) = 1;
+    end
+    
+    
+    if f < 0
+        negative_random_double(j) = 1;
+    end
+
+end
+
+negative_random = negative_random_double == 1;
+negative_fcc_random = fcc_group_random(negative_random);
+negative_K_random = KSample(negative_random);
+negative_k_random = kSample_random(negative_random);
+negative_flux_random = unabs_flux_group_random(negative_random);
+
+extreme_random = extreme_group_random >0;
+extreme_cond_group_random = Cond_group_random(extreme_random);
+
+fcc_group_random(:,extreme_random) = nan;
+S_group_random(:,extreme_random) = nan;
+Cond_group_random(extreme_random) = nan;
+var_group_random(extreme_random) = nan;
+flux_group_random(extreme_random) = nan;
+gini_group_random(extreme_random) = nan;
+unabs_flux_group_random(extreme_random) = nan;
+sum_wrong_random = sum(wrong_group_random);
+
+
+%%
+var_group_random(flux_group_random<0) = [];
+flux_group_random(flux_group_random<0) = [];
+flux_group_random(var_group_random>=1) = [];
+var_group_random(var_group_random>=1) = [];
+
+
+%%
+figure('Position', [400, 30, 900, 750]);
+hold on
+scatter((flux_group_glycolysis),(var_group_glycolysis),45,'o','filled','MarkerFaceColor',[238 125 50]/255,'MarkerEdgeColor',[182 211 240]/255);
+ftitle = title(sprintf('Relationship between flux and regulatory efficiency \n first order reaction pathway'));
+fylabel = ylabel('Flux control efficiency [a.u.]');
+fxlabel = xlabel('Flux [a.u.]');
+[r,p] = corr(flux_group_glycolysis,var_group_glycolysis,'type','Spearman')
+text(0.008,0.084,sprintf('Spearman correlation coefficient = -0.32 \nP value < 10^{-13} '),'FontSize',20)
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+box on
+
+figure('Position', [400, 30, 900, 750]);
+%scatter((flux_group_random),(gini_group_random),2.5,'o','filled','MarkerFaceColor',[218 227 243]/255,'MarkerEdgeColor',[218 227 243]/255);
+hold on
+scatter((flux_group_glycolysis),(gini_group_glycolysis),45,'o','filled','MarkerFaceColor',[238 125 50]/255,'MarkerEdgeColor',[182 211 240]/255);
+ftitle = title(sprintf('Relationship between flux and regulatory efficiency \n first order reaction pathway'));
+fylabel = ylabel('Gini coefficient of flux control coefficient [a.u.]');
+fxlabel = xlabel('Flux [a.u.]');
+text(0.01,0.885,sprintf('Spearman correlation coefficient -0.42 \nP value < 10^{9}'),'FontSize',20)
+set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+[r,p] = corr(flux_group_glycolysis,gini_group_glycolysis,'type','Spearman')
+box on
+%%
+[flux_var_spearman,p1] = corr(flux_group_glycolysis,var_group_glycolysis,'type','Spearman');
+[flux_gini_spearman,p2] = corr(flux_group_glycolysis,gini_group_glycolysis,'type','Spearman');
