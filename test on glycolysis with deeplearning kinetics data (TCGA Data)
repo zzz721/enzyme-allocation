@@ -1,16 +1,23 @@
+%%
+% This script is used to compare the similarity between different enzyme distribution 
+% methods for TCGA samples and theoretical derivations, represented by the distribution of 
+% Spearman correlation coefficients. It also compares the similarity of tumor tissue and 
+% normal tissue to the theoretical values across different samples.
 project_list = ["BRCA";"HNSC";"KIRC";"LUAD";"LUSC";"PRAD";"THCA"];
 tumor_spearman_group = zeros(1000,length(project_list));
 normal_spearman_group = zeros(300,length(project_list));
 permutation_spearman_group = zeros(1200,length(project_list));
 compare_tumor_and_normal = zeros(1,length(project_list));
-p_for_glycolysis = zeros(1,length(project_list));
-p_for_tumor_normal = zeros(1,length(project_list));
+estimated_K_tumor_sample = zeros(8,size(project_list,1));
+estimated_K_tumor_spearman = zeros(1,size(project_list,1));
+estimated_K_normal_sample = zeros(8,size(project_list,1));
+estimated_K_normal_spearman = zeros(1,size(project_list,1));
 for x = 1:length(project_list)
     symbol_table = readtable(sprintf('TCGA-%s_tpm_table.csv',project_list(x)));
     glycolysis_km = [{[0.11266,0.07636,0.09738,2.27190]},{[0.14276]},{[0.63713,0.18462,0.39181]},{[0.15178,0.01888,0.02963]},...
-        {[0.30868]},{[0.52958]},{[0.02558,0.06790]},{[0.16316,0.07849]},{[0.08089,0.18109,0.57327]},{[0.54278,0.04653]}];
+        {[0.52958]},{[0.02558,0.06790]},{[0.16316,0.07849]},{[0.08089,0.18109,0.57327]},{[0.54278,0.04653]}];
     glycolysis_kcat = [{[5.2935,5.2935,2.1311,16.4621]},{[66.9867]},{[9.6736,6.8316,18.5202]},{[1.7248,0.2444,8.63822]}...
-        {[485.2629]},{[9.1578]},{[69.1423,13.8187]},{[34.0914,25.8809]},{[10.0788,105.2464,58.0222]},{[118.6542,141.2942]}];
+        {[9.1578]},{[69.1423,13.8187]},{[34.0914,25.8809]},{[10.0788,105.2464,58.0222]},{[118.6542,141.2942]}];
     %%
     cell_type = symbol_table.Properties.VariableNames;
     normal_pos = contains(cell_type,'Normal');
@@ -21,7 +28,7 @@ for x = 1:length(project_list)
     permutated_tpm = reshape(the_tpm(randperm(numel(the_tpm))), size(the_tpm));
     symbol_names = table2cell(symbol_table(:,1));
     glycolysis_symbol = [{{'HK1','HK2','HK3','GCK'}};{{'GPI'}};{{'PFKM','PFKL','PFKP'}};{{'ALDOA','ALDOB','ALDOC'}};...
-        {{'TPI1'}};{{'GAPDH'}};{{'PGK1','PGK2'}};{{'PGAM1','PGAM2'}};{{'ENO1','ENO2','ENO3'}};{{'PKM','PKLR'}}];
+        {{'GAPDH'}};{{'PGK1','PGK2'}};{{'PGAM1','PGAM2'}};{{'ENO1','ENO2','ENO3'}};{{'PKM','PKLR'}}];
     
     normal_apparent_k = zeros(length(glycolysis_symbol),size(normal_tpm,2));
     tumor_apparent_k = zeros(length(glycolysis_symbol),size(tumor_tpm,2));
@@ -48,7 +55,7 @@ for x = 1:length(project_list)
     clear pos *_pos cell_type  the_*
     %%
     
-    glycolysis_DeltaG = [-16.7,1.7,-14.2,23.9,7.6,6.3,-18.8,4.4,-3.2,-31.4];
+    glycolysis_DeltaG = [-16.7,1.7,-14.2,23.9,6.3,-18.8,4.4,-3.2,-31.4];
     glycolysis_K = exp(-1*(1000*glycolysis_DeltaG)./(298.15*8.314));
     
     normal_estimated_K = zeros(size(normal_apparent_k,1)-1,size(normal_apparent_k,2));
@@ -68,31 +75,30 @@ for x = 1:length(project_list)
     %%
     normal_spearman = zeros(size(normal_estimated_K,2),1);
     for i = 1:length(normal_spearman)
-        normal_spearman(i) = corr(normal_estimated_K(:,i),glycolysis_K(1:9)','type','Spearman');
+        normal_spearman(i) = corr(normal_estimated_K(:,i),glycolysis_K(1:8)','type','Spearman');
     end
     
     tumor_spearman = zeros(size(tumor_estimated_K,2),1);
     for i = 1:length(tumor_spearman)
-        tumor_spearman(i) = corr(tumor_estimated_K(:,i),glycolysis_K(1:9)','type','Spearman');
+        tumor_spearman(i) = corr(tumor_estimated_K(:,i),glycolysis_K(1:8)','type','Spearman');
     end
     
     permutated_spearman = zeros(size(permutated_estimated_K,2),1);
     for i = 1:length(permutated_spearman)
-        permutated_spearman(i) = corr(permutated_estimated_K(:,i),glycolysis_K(1:9)','type','Spearman');
+        permutated_spearman(i) = corr(permutated_estimated_K(:,i),glycolysis_K(1:8)','type','Spearman');
     end
     
-    
     %%
-    % Compare the permutated group and the non-permutated group
+    % Compare the permuatated group and nonpermutated group 
     control_spearman = [tumor_spearman;normal_spearman];
     min_spearman = min([permutated_spearman;control_spearman]);
     max_spearman = max([permutated_spearman;control_spearman]);
     f = figure('Position', [400, 30, 900, 750]);
-    h1 = histogram(control_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[182 213 240]/255,'EdgeColor',[46 129 212]/255,'FaceAlpha',0.5);
+    h1 = histogram(control_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[218 227 243]/255,'EdgeColor',[68 114 196]/255,'FaceAlpha',1);
     xlim([min_spearman-0.05 max_spearman+0.05])
     hold on
     
-    h2 = histogram(permutated_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[250 219 223]/255,'EdgeColor',[240 148 159]/255,'FaceAlpha',0.5);
+    h2 = histogram(permutated_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[191 191 191]/255,'EdgeColor',[166 166 166]/255,'FaceAlpha',0.25);
     title(sprintf('%s samples correlation \n between k_i^2/k_{i+1}^2 and K_i in glycolysis',project_list(x)));
     xlabel('Spearman correlation coefficient');
     xlim([min_spearman-0.05 max_spearman+0.05])
@@ -100,7 +106,6 @@ for x = 1:length(project_list)
     legend([h1 h2],{'control group','permutated group'},'Location','northwest');
     
     [p,h] = ranksum(control_spearman,permutated_spearman);
-    p_for_glycolysis(x) = p;
     text(min_spearman-0.025,max([h1.Values,h2.Values])*0.85,sprintf('p = %d \nh = %d',p,h),'FontSize',20)
     
     set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
@@ -109,7 +114,7 @@ for x = 1:length(project_list)
     savefig(f,sprintf('6_%s_control_permutation.fig',project_list(x)));
     clear min_spearman max_spearman f h1 h2
     %%
-    % Compare the normal group and tumor group
+    % Compare tumor group and normal group
     min_spearman = min([normal_spearman;tumor_spearman]);
     max_spearman = max([normal_spearman;tumor_spearman]);
     f = figure('Position', [400, 30, 900, 750]);
@@ -125,7 +130,6 @@ for x = 1:length(project_list)
     lgd = legend([h1 h2],{'tumor group','normal group'},'Location','northwest');
     
     [p,h] = ranksum(tumor_spearman,normal_spearman);
-    p_for_tumor_normal(x) = p;
     text(min_spearman-0.025,max([h1.Values,h2.Values])*0.85,sprintf('p = %d \n',p),'FontSize',20)
     
     set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
@@ -141,161 +145,90 @@ for x = 1:length(project_list)
     if(mean(tumor_spearman)>mean(normal_spearman))
         compare_tumor_and_normal(x) = 1;
     end
+    
+    spearman_unique = unique(tumor_spearman);
+    the_spearman = spearman_unique(end-3);
+    pos = find(tumor_spearman == the_spearman);
+    estimated_K_tumor_sample(:,x) = tumor_estimated_K(:,pos(1));
+    estimated_K_tumor_spearman(x) = the_spearman;
+    
+    spearman_unique = unique(normal_spearman);
+    the_spearman = spearman_unique(end-3);
+    pos = find(normal_spearman == the_spearman);
+    estimated_K_normal_sample(:,x) = normal_estimated_K(:,pos(1));
+    estimated_K_normal_spearman(x) = the_spearman;
+    
 end
+clear the_spearman x pos
 %%
 tumor_spearman_group = array2table(tumor_spearman_group,'VariableNames',project_list);
 normal_spearman_group = array2table(normal_spearman_group,'VariableNames',project_list);
 permutation_spearman_group = array2table(permutation_spearman_group,'VariableNames',project_list);
-writetable(tumor_spearman_group,'tumor_spearman_table.csv');
-writetable((normal_spearman_group),'normal_spearman_table.csv');
-writetable((permutation_spearman_group),'permutation_spearman_table.csv');project_list = ["BRCA";"HNSC";"KIRC";"LUAD";"LUSC";"PRAD";"THCA"];
-tumor_spearman_group = zeros(1000,length(project_list));
-normal_spearman_group = zeros(300,length(project_list));
-permutation_spearman_group = zeros(1200,length(project_list));
-compare_tumor_and_normal = zeros(1,length(project_list));
-p_for_glycolysis = zeros(1,length(project_list));
-p_for_tumor_normal = zeros(1,length(project_list));
-for x = 1:length(project_list)
-    symbol_table = readtable(sprintf('TCGA-%s_tpm_table.csv',project_list(x)));
-    glycolysis_km = [{[0.11266,0.07636,0.09738,2.27190]},{[0.14276]},{[0.63713,0.18462,0.39181]},{[0.15178,0.01888,0.02963]},...
-        {[0.30868]},{[0.52958]},{[0.02558,0.06790]},{[0.16316,0.07849]},{[0.08089,0.18109,0.57327]},{[0.54278,0.04653]}];
-    glycolysis_kcat = [{[5.2935,5.2935,2.1311,16.4621]},{[66.9867]},{[9.6736,6.8316,18.5202]},{[1.7248,0.2444,8.63822]}...
-        {[485.2629]},{[9.1578]},{[69.1423,13.8187]},{[34.0914,25.8809]},{[10.0788,105.2464,58.0222]},{[118.6542,141.2942]}];
-    %%
-    cell_type = symbol_table.Properties.VariableNames;
-    normal_pos = contains(cell_type,'Normal');
-    tumor_pos = contains(cell_type,'Tumor');
-    normal_tpm = table2array(symbol_table(:,normal_pos));
-    tumor_tpm = table2array(symbol_table(:,tumor_pos));
-    the_tpm = table2array(symbol_table(:,2:end));
-    permutated_tpm = reshape(the_tpm(randperm(numel(the_tpm))), size(the_tpm));
-    symbol_names = table2cell(symbol_table(:,1));
-    glycolysis_symbol = [{{'HK1','HK2','HK3','GCK'}};{{'GPI'}};{{'PFKM','PFKL','PFKP'}};{{'ALDOA','ALDOB','ALDOC'}};...
-        {{'TPI1'}};{{'GAPDH'}};{{'PGK1','PGK2'}};{{'PGAM1','PGAM2'}};{{'ENO1','ENO2','ENO3'}};{{'PKM','PKLR'}}];
-    
-    normal_apparent_k = zeros(length(glycolysis_symbol),size(normal_tpm,2));
-    tumor_apparent_k = zeros(length(glycolysis_symbol),size(tumor_tpm,2));
-    permutated_apparent_k = zeros(length(glycolysis_symbol),size(permutated_tpm,2));
-    for i = 1:length(glycolysis_symbol)
-        the_enzymes = glycolysis_symbol{i};
-        the_km = glycolysis_km{i};
-        the_kcat = glycolysis_kcat{i};
-        normal_val = zeros(1,size(normal_tpm,2));
-        tumor_val = zeros(1,size(tumor_tpm,2));
-        permutated_val = zeros(1,size(permutated_tpm,2));
-        for j = 1:length(the_enzymes)
-            normal_val = normal_val + normal_tpm(ismember(symbol_names,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
-            tumor_val = tumor_val + tumor_tpm(ismember(symbol_names,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
-            permutated_val = permutated_val + permutated_tpm(ismember(symbol_names,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
-        end
-        normal_apparent_k(i,:) = normal_val;
-        tumor_apparent_k(i,:) = tumor_val;
-        permutated_apparent_k(i,:) = permutated_val;
-        
-    end
-    
-    
-    clear pos *_pos cell_type  the_*
-    %%
-    
-    glycolysis_DeltaG = [-16.7,1.7,-14.2,23.9,7.6,6.3,-18.8,4.4,-3.2,-31.4];
-    glycolysis_K = exp(-1*(1000*glycolysis_DeltaG)./(298.15*8.314));
-    
-    normal_estimated_K = zeros(size(normal_apparent_k,1)-1,size(normal_apparent_k,2));
-    for i = 1:size(normal_apparent_k,1)-1
-        normal_estimated_K(i,:) = (normal_apparent_k(i,:).^2)./normal_apparent_k(i+1,:).^2;
-    end
-    
-    tumor_estimated_K = zeros(size(tumor_apparent_k,1)-1,size(tumor_apparent_k,2));
-    for i = 1:size(tumor_apparent_k,1)-1
-        tumor_estimated_K(i,:) = (tumor_apparent_k(i,:).^2)./tumor_apparent_k(i+1,:).^2;
-    end
-    
-    permutated_estimated_K = zeros(size(permutated_apparent_k,1)-1,size(permutated_apparent_k,2));
-    for i = 1:size(permutated_apparent_k,1)-1
-        permutated_estimated_K(i,:) = (permutated_apparent_k(i,:).^2)./permutated_apparent_k(i+1,:).^2;
-    end
-    %%
-    normal_spearman = zeros(size(normal_estimated_K,2),1);
-    for i = 1:length(normal_spearman)
-        normal_spearman(i) = corr(normal_estimated_K(:,i),glycolysis_K(1:9)','type','Spearman');
-    end
-    
-    tumor_spearman = zeros(size(tumor_estimated_K,2),1);
-    for i = 1:length(tumor_spearman)
-        tumor_spearman(i) = corr(tumor_estimated_K(:,i),glycolysis_K(1:9)','type','Spearman');
-    end
-    
-    permutated_spearman = zeros(size(permutated_estimated_K,2),1);
-    for i = 1:length(permutated_spearman)
-        permutated_spearman(i) = corr(permutated_estimated_K(:,i),glycolysis_K(1:9)','type','Spearman');
-    end
-    
-    
-    %%
-    % Compare the permutated group and the non-permutated group
-    control_spearman = [tumor_spearman;normal_spearman];
-    min_spearman = min([permutated_spearman;control_spearman]);
-    max_spearman = max([permutated_spearman;control_spearman]);
-    f = figure('Position', [400, 30, 900, 750]);
-    h1 = histogram(control_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[182 213 240]/255,'EdgeColor',[46 129 212]/255,'FaceAlpha',0.5);
-    xlim([min_spearman-0.05 max_spearman+0.05])
-    hold on
-    
-    h2 = histogram(permutated_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[250 219 223]/255,'EdgeColor',[240 148 159]/255,'FaceAlpha',0.5);
-    title(sprintf('%s samples correlation \n between k_i^2/k_{i+1}^2 and K_i in glycolysis',project_list(x)));
-    xlabel('Spearman correlation coefficient');
-    xlim([min_spearman-0.05 max_spearman+0.05])
-    ylabel('Cell line number');
-    legend([h1 h2],{'control group','permutated group'},'Location','northwest');
-    
-    [p,h] = ranksum(control_spearman,permutated_spearman);
-    p_for_glycolysis(x) = p;
-    text(min_spearman-0.025,max([h1.Values,h2.Values])*0.85,sprintf('p = %d \nh = %d',p,h),'FontSize',20)
-    
-    set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
-    hold off
-    saveas(gcf,sprintf('6_%s_control_permutation.tif',project_list(x)));
-    savefig(f,sprintf('6_%s_control_permutation.fig',project_list(x)));
-    clear min_spearman max_spearman f h1 h2
-    %%
-    % Compare the normal group and tumor group
-    min_spearman = min([normal_spearman;tumor_spearman]);
-    max_spearman = max([normal_spearman;tumor_spearman]);
-    f = figure('Position', [400, 30, 900, 750]);
-    h1 = histogram(tumor_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[248 205 172]/255,'EdgeColor',[237 129 47]/255,'FaceAlpha',0.5);
-    xlim([min_spearman-0.05 max_spearman+0.05])
-    hold on
-    
-    h2 = histogram(normal_spearman,[min_spearman:0.025:max_spearman],'FaceColor',[227 242 217]/255,'EdgeColor',[117 189 66]/255,'FaceAlpha',0.5);
-    title(sprintf('%s samples correlation \n between k_i^2/k_{i+1}^2 and K_i in glycolysis',project_list(x)));
-    xlabel('Spearman correlation coefficient');
-    xlim([min_spearman-0.05 max_spearman+0.05])
-    ylabel('Cell line number');
-    lgd = legend([h1 h2],{'tumor group','normal group'},'Location','northwest');
-    
-    [p,h] = ranksum(tumor_spearman,normal_spearman);
-    p_for_tumor_normal(x) = p;
-    text(min_spearman-0.025,max([h1.Values,h2.Values])*0.85,sprintf('p = %d \n',p),'FontSize',20)
-    
-    set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
-    saveas(gcf,sprintf('6_%s_tumor_normal.tif',project_list(x)));
-    savefig(f,sprintf('6_%s_tumor_normal.fig',project_list(x)));
-    hold off
-    clear text* min_* max_* f h1 h2 p h
-    %%
-    tumor_spearman_group(1:length(tumor_spearman),x) = tumor_spearman;
-    normal_spearman_group(1:length(normal_spearman),x) = normal_spearman;
-    permutation_spearman_group(1:length(permutated_spearman),x) = permutated_spearman;
-    
-    if(mean(tumor_spearman)>mean(normal_spearman))
-        compare_tumor_and_normal(x) = 1;
-    end
-end
+writetable(tumor_spearman_group,'tumor_spearman_table_more_linear.csv');
+writetable((normal_spearman_group),'normal_spearman_table_more_linear.csv');
+writetable((permutation_spearman_group),'permutation_spearman_table_morre_linear.csv');
 %%
-tumor_spearman_group = array2table(tumor_spearman_group,'VariableNames',project_list);
-normal_spearman_group = array2table(normal_spearman_group,'VariableNames',project_list);
-permutation_spearman_group = array2table(permutation_spearman_group,'VariableNames',project_list);
-writetable(tumor_spearman_group,'tumor_spearman_table.csv');
-writetable((normal_spearman_group),'normal_spearman_table.csv');
-writetable((permutation_spearman_group),'permutation_spearman_table.csv');
+glycolysis_reaction_name = [{'Glc->G6P->F6P'},{'G6P->F6P->FBP'},{'F6P->FBP->DHAP+GAP'},{'FBP->2GAP->2BPG'},{'GAP->BPG->3PG'},{'BPG->3PG->2PG'},{'3PG->2PG->PEP'},{'2PG->PEP->Pyr'}]; 
+load('Mycolormap1.mat');
+figure('Position', [400, 30, 900, 750]);
+project_list = ["BRCA";"HNSC";"KIRC";"LUAD";"LUSC";"PRAD";"THCA"];
+for i = 1:size(estimated_K_tumor_sample,2)
+    
+
+    color = [1,17,31,55,86,98,106,129];
+    color = (mycolorbar_1(color,:));
+    
+    estimated_K = estimated_K_tumor_sample(1:8,i);
+    
+    scatter(log(estimated_K),log((glycolysis_K(1:8)))',200,'MarkerFaceColor',color(i,:),'MarkerEdgeColor',color(i,:));
+    
+    hold on
+    
+    box on
+    xlim([min(log(estimated_K(:)))-5.5,max(log(estimated_K(:)))+5]);
+    ylim([min(log(glycolysis_K(1:7)))-3,max(log(glycolysis_K(1:7)))+3]);
+    xlabel(sprintf('log(k_i^2/k_{i+1}^2)'));
+    ylabel(sprintf('log(K_i) of upstream reaction'));
+    title(sprintf('log(k_i^2/k_{i+1}^2) and log(K_i) in glycolysis pathway \n of different TCGA projects (tumor tissue)'));
+    set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+end
+for i = 1:size(project_list,1)
+   project_list(i) = sprintf('%s \t \\rho=%.2f ',project_list(i),estimated_K_tumor_spearman(i)); 
+end
+legend(project_list);
+for i = 1:size(estimated_K,1)  
+    text(mean(log(estimated_K_tumor_sample(i,:))),log(glycolysis_K(i)) ,glycolysis_reaction_name{i}, 'VerticalAlignment', 'middle', 'HorizontalAlignment', 'center','FontSize', 20);  
+end
+   
+hold off
+%%
+figure('Position', [400, 30, 900, 750]);
+project_list = ["BRCA";"HNSC";"KIRC";"LUAD";"LUSC";"PRAD";"THCA"];
+for i = 1:size(estimated_K_normal_sample,2)
+    
+    color = [1,17,31,55,86,98,106,129];
+    color = (mycolorbar_1(color,:));
+    
+    estimated_K = estimated_K_normal_sample(1:8,i);
+    
+    scatter(log(estimated_K),log((glycolysis_K(1:8)))',200,'MarkerFaceColor',color(i,:),'MarkerEdgeColor',color(i,:));
+    
+    hold on
+    
+    box on
+    xlim([min(log(estimated_K(:)))-5.5,max(log(estimated_K(:)))+5]);
+    ylim([min(log(glycolysis_K(1:7)))-3,max(log(glycolysis_K(1:7)))+3]);
+    xlabel(sprintf('log(k_i^2/k_{i+1}^2)'));
+    ylabel(sprintf('log(K_i) of upstream reaction'));
+    title(sprintf('log(k_i^2/k_{i+1}^2) and log(K_i) in glycolysis pathway \n of different TCGA projects (normal tissue)'));
+    set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+end
+for i = 1:size(project_list,1)
+   project_list(i) = sprintf('%s \t \\rho=%.2f ',project_list(i),estimated_K_normal_spearman(i)); 
+end
+legend(project_list);
+for i = 1:size(estimated_K,1)
+    text(mean(log(estimated_K_tumor_sample(i,:))),log(glycolysis_K(i)) ,glycolysis_reaction_name{i}, 'VerticalAlignment', 'middle', 'HorizontalAlignment', 'center','FontSize', 20);  
+end
+   
+hold off
