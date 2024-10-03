@@ -1,0 +1,205 @@
+%Test on glycolysis pathway
+%The purpose of this script is to compare the effects of three different shuffling methods on the correlation coefficient:
+%1.Shuffling the mass spectrometry data
+%2.Shuffling the kinetic parameters
+%3.Simultaneously shuffling the mass spectrometry data and the kinetic parameters
+project_list = ["BRCA";"HNSC";"KIRC";"LUAD";"LUSC";"PRAD";"THCA"];
+tumor_spearman_group = zeros(1000,length(project_list));
+normal_spearman_group = zeros(300,length(project_list));
+permutation_spearman_group_ms = zeros(1200,length(project_list));
+permutation_spearman_group_dynamics = zeros(1200,length(project_list));
+permutation_spearman_group_all = zeros(1200,length(project_list));
+
+compare_tumor_and_normal = zeros(1,length(project_list));
+estimated_K_tumor_sample = zeros(8,size(project_list,1));
+estimated_K_tumor_spearman = zeros(1,size(project_list,1));
+estimated_K_normal_sample = zeros(8,size(project_list,1));
+estimated_K_normal_spearman = zeros(1,size(project_list,1));
+
+
+for x = 1:length(project_list)
+    
+    symbol_table = readtable(sprintf('TCGA-%s_tpm_table.csv',project_list(x)));
+    glycolysis_km = [{[0.11266,0.07636,0.09738,2.27190]},{[0.14276]},{[0.63713,0.18462,0.39181]},{[0.15178,0.01888,0.02963]},...
+        {[0.52958]},{[0.02558,0.06790]},{[0.16316,0.07849]},{[0.08089,0.18109,0.57327]},{[0.54278,0.04653]}];
+    glycolysis_kcat = [{[5.2935,5.2935,2.1311,16.4621]},{[66.9867]},{[9.6736,6.8316,18.5202]},{[1.7248,0.2444,8.63822]}...
+        {[9.1578]},{[69.1423,13.8187]},{[34.0914,25.8809]},{[10.0788,105.2464,58.0222]},{[118.6542,141.2942]}];
+    
+    glycolysis_km_for_permutation = [0.11266,0.07636,0.09738,2.27190,0.14276,0.63713,0.18462,0.39181,0.15178,0.01888,0.02963,...
+    0.52958,0.02558,0.06790,0.16316,0.07849,0.08089,0.18109,0.57327,0.54278,0.04653];
+
+    glycolysis_kcat_for_permutation = [5.2935,5.2935,2.1311,16.4621,66.9867,9.6736,6.8316,18.5202,1.7248,0.2444,8.63822,...
+    9.1578,69.1423,13.8187,34.0914,25.8809,10.0788,105.2464,58.0222,118.6542,141.2942];
+
+    the_tpm = table2array(symbol_table(:,2:end));
+    
+    permutated_ms = reshape(the_tpm(randperm(numel(the_tpm))), size(the_tpm));
+    the_permutation = randperm(length(glycolysis_km_for_permutation));
+    permutated_km = glycolysis_km_for_permutation(the_permutation);
+    permutated_kcat = glycolysis_kcat_for_permutation(the_permutation);
+    clear *_for_permutation the_permuation
+    %%
+    cell_type = symbol_table.Properties.VariableNames;
+    normal_pos = contains(cell_type,'Normal');
+    tumor_pos = contains(cell_type,'Tumor');
+    normal_tpm = table2array(symbol_table(:,normal_pos));
+    tumor_tpm = table2array(symbol_table(:,tumor_pos));
+    the_tpm = table2array(symbol_table(:,2:end));
+    permutated_tpm = reshape(the_tpm(randperm(numel(the_tpm))), size(the_tpm));
+    symbol_names = table2cell(symbol_table(:,1));
+    glycolysis_symbol = [{{'HK1','HK2','HK3','GCK'}};{{'GPI'}};{{'PFKM','PFKL','PFKP'}};{{'ALDOA','ALDOB','ALDOC'}};...
+        {{'GAPDH'}};{{'PGK1','PGK2'}};{{'PGAM1','PGAM2'}};{{'ENO1','ENO2','ENO3'}};{{'PKM','PKLR'}}];
+    
+    
+    normal_apparent_k = zeros(length(glycolysis_symbol),size(normal_tpm,2));
+    tumor_apparent_k = zeros(length(glycolysis_symbol),size(tumor_tpm,2));
+    permutated_apparent_k_ms = zeros(length(glycolysis_symbol),size(permutated_tpm,2));
+    permutated_apparent_k_dynamics = zeros(length(glycolysis_symbol),size(permutated_tpm,2));
+    permutated_apparent_k_all = zeros(length(glycolysis_symbol),size(permutated_tpm,2));
+    n = 1;
+    for i = 1:length(glycolysis_symbol)
+        the_enzymes = glycolysis_symbol{i};
+        the_km = glycolysis_km{i};
+        the_kcat = glycolysis_kcat{i};
+        normal_val = zeros(1,size(normal_tpm,2));
+        tumor_val = zeros(1,size(tumor_tpm,2));
+        permutated_val_ms = zeros(1,size(permutated_tpm,2));
+        permutated_val_dynamics = zeros(1,size(permutated_tpm,2));
+        permutated_val_all = zeros(1,size(permutated_tpm,2));
+        for j = 1:length(the_enzymes)
+            normal_val = normal_val + normal_tpm(ismember(symbol_names,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
+            tumor_val = tumor_val + tumor_tpm(ismember(symbol_names,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
+            permutated_val_ms = permutated_val_ms + permutated_tpm(ismember(symbol_names,the_enzymes(j)),:).*(the_kcat(j)/the_km(j));
+            permutated_val_dynamics = permutated_val_dynamics + the_tpm(ismember(symbol_names,the_enzymes(j)),:).*(permutated_kcat(n)/permutated_km(n));
+            permutated_val_all = permutated_val_all + permutated_tpm(ismember(symbol_names,the_enzymes(j)),:).*(permutated_kcat(n)/permutated_km(n)); 
+            n = n + 1;
+        end
+        normal_apparent_k(i,:) = normal_val;
+        tumor_apparent_k(i,:) = tumor_val;
+        permutated_apparent_k_ms(i,:) = permutated_val_ms;
+        permutated_apparent_k_dynamics(i,:) = permutated_val_dynamics;
+        permutated_apparent_k_all(i,:) = permutated_val_all;
+    end
+    
+    
+    clear pos *_pos cell_type  the_*
+    %%
+    
+    glycolysis_DeltaG = [-16.7,1.7,-14.2,23.9,6.3,-18.8,4.4,-3.2,-31.4];
+    glycolysis_K = exp(-1*(1000*glycolysis_DeltaG)./(298.15*8.314));
+    
+    normal_estimated_K = zeros(size(normal_apparent_k,1)-1,size(normal_apparent_k,2));
+    for i = 1:size(normal_apparent_k,1)-1
+        normal_estimated_K(i,:) = (normal_apparent_k(i,:).^2)./normal_apparent_k(i+1,:).^2;
+    end
+    
+    tumor_estimated_K = zeros(size(tumor_apparent_k,1)-1,size(tumor_apparent_k,2));
+    for i = 1:size(tumor_apparent_k,1)-1
+        tumor_estimated_K(i,:) = (tumor_apparent_k(i,:).^2)./tumor_apparent_k(i+1,:).^2;
+    end
+    
+    permutated_estimated_K_ms = zeros(size(permutated_apparent_k_ms,1)-1,size(permutated_apparent_k_ms,2));
+    for i = 1:size(permutated_apparent_k_ms,1)-1
+        permutated_estimated_K_ms(i,:) = (permutated_apparent_k_ms(i,:).^2)./permutated_apparent_k_ms(i+1,:).^2;
+    end
+    
+    permutated_estimated_K_dynamics = zeros(size(permutated_apparent_k_dynamics,1)-1,size(permutated_apparent_k_dynamics,2));
+    for i = 1:size(permutated_apparent_k_dynamics,1)-1
+        permutated_estimated_K_dynamics(i,:) = (permutated_apparent_k_dynamics(i,:).^2)./permutated_apparent_k_dynamics(i+1,:).^2;
+    end
+    
+    permutated_estimated_K_all = zeros(size(permutated_apparent_k_all,1)-1,size(permutated_apparent_k_all,2));
+    for i = 1:size(permutated_apparent_k_all,1)-1
+        permutated_estimated_K_all(i,:) = (permutated_apparent_k_all(i,:).^2)./permutated_apparent_k_all(i+1,:).^2;
+    end
+    %%
+    
+    normal_spearman = zeros(size(normal_estimated_K,2),1);
+    for i = 1:length(normal_spearman)
+        normal_spearman(i) = corr(normal_estimated_K(:,i),glycolysis_K(1:8)','type','Spearman');
+    end
+    
+    tumor_spearman = zeros(size(tumor_estimated_K,2),1);
+    for i = 1:length(tumor_spearman)
+        tumor_spearman(i) = corr(tumor_estimated_K(:,i),glycolysis_K(1:8)','type','Spearman');
+    end
+    
+    permutated_spearman_ms = zeros(size(permutated_estimated_K_ms,2),1);
+    for i = 1:length(permutated_spearman_ms)
+        permutated_spearman_ms(i) = corr(permutated_estimated_K_ms(:,i),glycolysis_K(1:8)','type','Spearman');
+    end
+    
+    permutated_spearman_dynamics = zeros(size(permutated_estimated_K_dynamics,2),1);
+    for i = 1:length(permutated_spearman_dynamics)
+        permutated_spearman_dynamics(i) = corr(permutated_estimated_K_dynamics(:,i),glycolysis_K(1:8)','type','Spearman');
+    end
+    
+    permutated_spearman_all = zeros(size(permutated_estimated_K_all,2),1);
+    for i = 1:length(permutated_spearman_all)
+        permutated_spearman_all(i) = corr(permutated_estimated_K_all(:,i),glycolysis_K(1:8)','type','Spearman');
+    end
+    
+    %%
+    tumor_spearman_group(1:length(tumor_spearman),x) = tumor_spearman;
+    normal_spearman_group(1:length(normal_spearman),x) = normal_spearman;
+    permutation_spearman_group_ms(1:length(permutated_spearman_ms),x) = permutated_spearman_ms;
+    permutation_spearman_group_dynamics(1:length(permutated_spearman_dynamics),x) = permutated_spearman_dynamics;
+    permutation_spearman_group_all(1:length(permutated_spearman_all),x) = permutated_spearman_all;
+    
+    
+    if(mean(tumor_spearman)>mean(normal_spearman))
+        compare_tumor_and_normal(x) = 1;
+    end
+    
+    spearman_unique = unique(tumor_spearman);
+    the_spearman = spearman_unique(end-3);
+    pos = find(tumor_spearman == the_spearman);
+    estimated_K_tumor_sample(:,x) = tumor_estimated_K(:,pos(1));
+    estimated_K_tumor_spearman(x) = the_spearman;
+    
+    spearman_unique = unique(normal_spearman);
+    the_spearman = spearman_unique(end-3);
+    pos = find(normal_spearman == the_spearman);
+    estimated_K_normal_sample(:,x) = normal_estimated_K(:,pos(1));
+    estimated_K_normal_spearman(x) = the_spearman;
+    
+end
+%%
+control_spearman_group = [tumor_spearman_group; normal_spearman_group];
+control_spearman_group = control_spearman_group(:);
+control_spearman_group(control_spearman_group==0) = [];
+
+permutation_spearman_group_ms = permutation_spearman_group_ms(:);
+permutation_spearman_group_ms(permutation_spearman_group_ms==0) = [];
+
+permutation_spearman_group_dynamics = permutation_spearman_group_dynamics(:);
+permutation_spearman_group_dynamics(permutation_spearman_group_dynamics==0) = [];
+
+permutation_spearman_group_all = permutation_spearman_group_all(:);
+permutation_spearman_group_all(permutation_spearman_group_all==0) = [];
+%%
+    min_spearman = min([permutation_spearman_group_ms;permutation_spearman_group_dynamics;permutation_spearman_group_all;control_spearman_group]);
+    max_spearman = max([permutation_spearman_group_ms;permutation_spearman_group_dynamics;permutation_spearman_group_all;control_spearman_group]);
+    f = figure('Position', [400, 30, 900, 750]);
+    xlim([min_spearman-0.05 max_spearman+0.05])
+    hold on
+    
+    h2 = histogram(permutated_spearman_ms,[min_spearman:0.025:max_spearman],'FaceColor',[191 191 191]/255,'EdgeColor',[166 166 166]/255,'FaceAlpha',0.25);
+    xlim([min_spearman-0.05 max_spearman+0.05])
+    
+    hold on
+    
+    h4 = histogram(permutated_spearman_dynamics,[min_spearman:0.025:max_spearman],'FaceColor',[239 148 158]/255,'EdgeColor',[200 28 49]/255,'FaceAlpha',0.25);
+    
+    hold on
+    
+    h3 = histogram(permutated_spearman_dynamics,[min_spearman:0.025:max_spearman],'FaceColor',[166 216 84]/255,'EdgeColor',[221 238 195]/255,'FaceAlpha',0.25);
+
+    legend([ h2 h3 h4],{'permutated ms','permutated dynamics','permutated all'},'Location','northwest');
+    
+    set(gca,'FontSize',20,'LineWidth',1.5,'PlotBoxAspectRatio',[1 1 1]);
+    hold off
+    clear min_spearman max_spearman f h1 h2
+
+
+clear the_spearman x pos
