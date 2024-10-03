@@ -1,0 +1,60 @@
+%%
+%Calculate the Spearman correlation coefficient between normal tissue and tumor tissue
+project_list = ["BRCA";"HNSC";"KIRC";"LUAD";"LUSC";"PRAD";"THCA"];
+BRCA_table = readtable('TCGA-BRCA_tpm_table.csv');
+HNSC_table = readtable('TCGA-HNSC_tpm_table.csv');
+KIRC_table = readtable('TCGA-KIRC_tpm_table.csv');
+LUAD_table = readtable('TCGA-LUAD_tpm_table.csv');
+LUSC_table = readtable('TCGA-LUSC_tpm_table.csv');
+PRAD_table = readtable('TCGA-PRAD_tpm_table.csv');
+THCA_table = readtable('TCGA-THCA_tpm_table.csv');
+BRCA_symbol = table2cell(BRCA_table(:,1));
+HNSC_symbol = table2cell(HNSC_table(:,1));
+KIRC_symbol = table2cell(KIRC_table(:,1));
+LUAD_symbol = table2cell(LUAD_table(:,1));
+LUSC_symbol = table2cell(LUSC_table(:,1));
+PRAD_symbol = table2cell(PRAD_table(:,1));
+THCA_symbol = table2cell(THCA_table(:,1));
+%%
+cell_type = BRCA_table.Properties.VariableNames;
+BRCA_normal_pos = find(contains(cell_type,'Normal'));
+BRCA_tumor_pos = find(contains(cell_type,'Tumor'));
+
+cell_type = HNSC_table.Properties.VariableNames;
+HNSC_normal_pos = find(contains(cell_type,'Normal'));
+HNSC_tumor_pos = find(contains(cell_type,'Tumor'));
+
+cell_type = KIRC_table.Properties.VariableNames;
+KIRC_normal_pos = find(contains(cell_type,'Normal'));
+KIRC_tumor_pos = find(contains(cell_type,'Tumor'));
+
+cell_type = LUAD_table.Properties.VariableNames;
+LUAD_normal_pos = find(contains(cell_type,'Normal'));
+LUAD_tumor_pos = find(contains(cell_type,'Tumor'));
+
+cell_type = LUSC_table.Properties.VariableNames;
+LUSC_normal_pos = find(contains(cell_type,'Normal'));
+LUSC_tumor_pos = find(contains(cell_type,'Tumor'));
+
+cell_type = PRAD_table.Properties.VariableNames;
+PRAD_normal_pos = find(contains(cell_type,'Normal'));
+PRAD_tumor_pos = find(contains(cell_type,'Tumor'));
+
+cell_type = THCA_table.Properties.VariableNames;
+THCA_normal_pos = find(contains(cell_type,'Normal'));
+THCA_tumor_pos = find(contains(cell_type,'Tumor'));
+%%
+normal_tpm = [table2array(BRCA_table(:,BRCA_normal_pos(1:30))),table2array(HNSC_table(:,HNSC_normal_pos(1:30))),table2array(KIRC_table(:,KIRC_normal_pos(1:30))),table2array(LUAD_table(:,LUAD_normal_pos(1:30))),table2array(LUSC_table(:,LUSC_normal_pos(1:30))),table2array(PRAD_table(:,PRAD_normal_pos(1:30))),table2array(THCA_table(:,THCA_normal_pos(1:30)))];
+tumor_tpm = [table2array(BRCA_table(:,BRCA_tumor_pos(1:60))),table2array(HNSC_table(:,HNSC_tumor_pos(1:60))),table2array(KIRC_table(:,KIRC_tumor_pos(1:60))),table2array(LUAD_table(:,LUAD_tumor_pos(1:60))),table2array(LUSC_table(:,LUSC_tumor_pos(1:60))),table2array(PRAD_table(:,PRAD_tumor_pos(1:60))),table2array(THCA_table(:,THCA_tumor_pos(1:60)))];
+clear *_table *_symbol *_pos
+%%
+normal_p = corr(normal_tpm,'type','Spearman');
+normal_spearman = [];
+for i = 1:size(normal_p,1)-1
+    normal_spearman = [normal_spearman,normal_p(i+1:end)];
+end
+tumor_p = corr(tumor_tpm,'type','Spearman');
+tumor_spearman = [];
+for i = 1:size(tumor_p,1)-1
+    tumor_spearman = [tumor_spearman,tumor_p(i+1:end)];
+end
